@@ -4,12 +4,21 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "NODE_OPTIONS=--no-deprecation ts-node src/index.ts"
+    "start": "ts-node src/index.ts",
+    "dev": "ts-node --watch src/index.ts",
+    "build": "tsc",
+    "clean": "rm -rf dist"
   },
-  "keywords": [],
+  "keywords": [
+    "twitter",
+    "bot",
+    "sniper",
+    "solana",
+    "crypto"
+  ],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "Advanced Twitter sniper bot for detecting and buying Solana tokens",
   "devDependencies": {
     "@types/node": "^24.2.0",
     "pino-pretty": "^13.1.1",

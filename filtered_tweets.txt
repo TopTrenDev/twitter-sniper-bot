@@ -1,5 +1,0 @@
-Found 1 tweets with keyword "Development" AND token CA:
-
-Filtered Tweet 1: "This is new token CA (Just for Development test)
-
-CA: Dantd7u8CPYNo2pMCgsuhjvLzVTnxSt5d2gFYdeyzEGg"

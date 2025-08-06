@@ -6,17 +6,64 @@ dotenv.config();
 const https = require("https");
 
 const RAPID_API_KEY = process.env.RAPID_API_KEYS;
-const username = process.env.USER_ID;
+const username = process.env.USER_NAME; // Fixed: was USER_ID
+const RAPID_HOST_NAME = process.env.RAPID_HOST_NAME;
+const keyword = process.env.KEYWORD; // Fixed: use environment variable
 
-// Step 1: Get user ID from username
+// Cache file for storing username to userID mappings
+const CACHE_FILE = "user_cache.json";
+
+// Function to load cached user IDs
+function loadUserCache() {
+  try {
+    if (fs.existsSync(CACHE_FILE)) {
+      const cacheData = fs.readFileSync(CACHE_FILE, 'utf8');
+      return JSON.parse(cacheData);
+    }
+  } catch (error) {
+    console.log("⚠️ Cache file corrupted, creating new cache");
+  }
+  return {};
+}
+
+// Function to save user ID to cache
+function saveUserToCache(username, userId) {
+  try {
+    const cache = loadUserCache();
+    cache[username] = {
+      userId: userId,
+      timestamp: new Date().toISOString()
+    };
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2));
+    console.log(`💾 Cached user ID for @${username}: ${userId}`);
+  } catch (error) {
+    console.log("⚠️ Failed to save to cache:", error.message);
+  }
+}
+
+// Function to get user ID (from cache or API)
 function getUserId(username, callback) {
+  // First, check if we have it cached
+  const cache = loadUserCache();
+  const cachedUser = cache[username];
+  
+  if (cachedUser && cachedUser.userId) {
+    console.log(`✅ Found cached user ID for @${username}: ${cachedUser.userId}`);
+    console.log(`📅 Cached on: ${cachedUser.timestamp}`);
+    callback(null, cachedUser.userId);
+    return;
+  }
+
+  // If not cached, fetch from API
+  console.log(`🔍 Fetching user ID for @${username}...`);
+  
   const options = {
     method: "GET",
-    hostname: "twitter241.p.rapidapi.com",
+    hostname: RAPID_HOST_NAME,
     path: `/user?username=${username}`,
     headers: {
       "x-rapidapi-key": RAPID_API_KEY,
-      "x-rapidapi-host": "twitter241.p.rapidapi.com",
+      "x-rapidapi-host": RAPID_HOST_NAME,
     },
   };
 
@@ -26,15 +73,11 @@ function getUserId(username, callback) {
     res.on("end", () => {
       try {
         const json = JSON.parse(data);
-        fs.writeFileSync(
-          "full_user_response.txt",
-          JSON.stringify(json, null, 2)
-        );
-        console.log("🔍 FULL USER RESPONSE saved to full_user_response.txt");
-
         const userId = json.result?.data?.user?.result?.rest_id || null;
 
         if (userId) {
+          // Save to cache for future use
+          saveUserToCache(username, userId);
           callback(null, userId);
         } else {
           callback("No user ID found in response");
@@ -53,11 +96,11 @@ function getUserId(username, callback) {
 function getUserTweets(userId) {
   const options = {
     method: "GET",
-    hostname: "twitter241.p.rapidapi.com",
+    hostname: RAPID_HOST_NAME,
     path: `/user-tweets?user=${userId}&count=10`,
     headers: {
       "x-rapidapi-key": RAPID_API_KEY,
-      "x-rapidapi-host": "twitter241.p.rapidapi.com",
+      "x-rapidapi-host": RAPID_HOST_NAME,
     },
   };
 
@@ -67,37 +110,14 @@ function getUserTweets(userId) {
     res.on("end", () => {
       try {
         const json = JSON.parse(data);
-        fs.writeFileSync("tweets.txt", JSON.stringify(json, null, 2));
-        console.log("✅ TWEETS saved to tweets.txt");
 
-        // Debug: Check the structure of the response
-        console.log("🔍 API Response Structure:");
-        console.log("json.result:", json.result ? "exists" : "null");
-        console.log(
-          "json.result.timeline:",
-          json.result?.timeline ? "exists" : "null"
-        );
-        console.log(
-          "json.result.timeline.instructions:",
-          json.result?.timeline?.instructions
-            ? `array with ${json.result?.timeline?.instructions?.length} items`
-            : "null"
-        );
-
-        if (json.result?.timeline?.instructions) {
-          json.result.timeline.instructions.forEach((instruction, index) => {
-            console.log(
-              `Instruction ${index}:`,
-              instruction.type || "unknown type"
-            );
-            if (instruction.entries) {
-              console.log(`  - Has ${instruction.entries.length} entries`);
-            }
-          });
+        // Check for API errors first
+        if (json.message) {
+          console.log(`❌ API Error: ${json.message}`);
+          return;
         }
 
         const entries = json.result?.timeline?.instructions?.[2]?.entries || [];
-        console.log("🚀 ~ getUserTweets ~ entries:", entries);
 
         // Map to get tweet objects with text
         const tweets = entries
@@ -105,10 +125,11 @@ function getUserTweets(userId) {
             (entry) => entry.content?.itemContent?.tweet_results?.result?.legacy
           )
           .filter(Boolean);
-        console.log("🚀 ~ getUserTweets ~ tweets:", tweets);
 
-        // Filter tweets to find ones with both keyword AND token CA
-        const keyword = "Development".trim(); // or get from user input
+        if (!tweets || !Array.isArray(tweets)) {
+          console.log("❌ No tweets found in response");
+          return;
+        }
 
         // Debug: Check each filter separately
         const keywordOnly = tweets.filter((tweet) =>
@@ -122,12 +143,6 @@ function getUserTweets(userId) {
           caRegex.test(tweet.full_text || tweet.text || "")
         );
 
-        // // Also check for "CA:" pattern specifically
-        // const caWithPrefixRegex = /CA:\s*([1-9A-HJ-NP-Za-km-z]{32,44})/i;
-        // const caWithPrefixOnly = tweets.filter((tweet) =>
-        //   caWithPrefixRegex.test(tweet.full_text || tweet.text || "")
-        // );
-
         // Check for any token mint address (32-44 characters)
         const tokenMintRegex = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/;
         const tokenMintOnly = tweets.filter((tweet) =>
@@ -138,7 +153,6 @@ function getUserTweets(userId) {
         console.log(`Total tweets fetched: ${tweets.length}`);
         console.log(`Tweets with keyword "${keyword}": ${keywordOnly.length}`);
         console.log(`Tweets with token CA: ${caOnly.length}`);
-        // console.log(`Tweets with "CA:" pattern: ${caWithPrefixOnly.length}`);
         console.log(`Tweets with token mint address: ${tokenMintOnly.length}`);
 
         // Show some examples
@@ -177,28 +191,52 @@ function getUserTweets(userId) {
 
         // Save only the matching tweets to file
         if (filtered.length > 0) {
-          const filteredTweetTexts = filtered.map((tweet, i) => {
+          // Create structured results with username, keyword, and token CA
+          const structuredResults = filtered.map((tweet, i) => {
             const text = tweet.full_text || tweet.text || "";
-            return `Filtered Tweet ${i + 1}: "${text}"`;
+            const tokenCA = extractTokenCA(text);
+            
+            return {
+              username: username,
+              keyword: keyword,
+              tokenCA: tokenCA,
+              tweetText: text,
+              tweetId: tweet.id_str || tweet.id,
+              timestamp: new Date().toISOString()
+            };
           });
 
+          // Save detailed results to JSON file
           fs.writeFileSync(
-            "filtered_tweets.txt",
-            [
-              `Found ${filtered.length} tweets with keyword "${keyword}" AND token CA:`,
-              "",
-              ...filteredTweetTexts,
-            ].join("\n")
+            "filtered_results.json",
+            JSON.stringify(structuredResults, null, 2)
           );
-          console.log(
-            `\n✅ Saved ${filtered.length} matching tweets to filtered_tweets.txt`
-          );
+          
+          console.log(`✅ Found ${filtered.length} matching tweets`);
+          console.log(`📄 Results saved to filtered_results.json`);
+          
+          // Log the structured results
+          structuredResults.forEach((result, i) => {
+            console.log(`\n🎯 Result ${i + 1}:`);
+            console.log(`  Username: @${result.username}`);
+            console.log(`  Keyword: "${result.keyword}"`);
+            console.log(`  Token CA: ${result.tokenCA}`);
+            console.log(`  Tweet: "${result.tweetText.substring(0, 100)}..."`);
+          });
         } else {
+          const noResults = {
+            username: username,
+            keyword: keyword,
+            timestamp: new Date().toISOString(),
+            message: `No tweets found with keyword "${keyword}" AND token CA.`
+          };
+          
           fs.writeFileSync(
-            "filtered_tweets.txt",
-            `No tweets found with keyword "${keyword}" AND token CA.`
+            "filtered_results.json",
+            JSON.stringify([noResults], null, 2)
           );
-          console.log(`\n✅ Saved result to filtered_tweets.txt`);
+          
+          console.log(`❌ No tweets found with keyword "${keyword}" AND token CA.`);
         }
       } catch (err) {
         console.error("Error parsing tweets JSON:", err);
@@ -231,4 +269,23 @@ function filterTweets(tweets, keyword) {
     const hasTokenMint = tokenMintRegex.test(text);
     return hasKeyword && hasTokenMint;
   });
+}
+
+// Function to extract token CA from tweet text
+function extractTokenCA(text) {
+  // Try different patterns to find token CA
+  const patterns = [
+    /\bca[:;]?\s*([1-9A-HJ-NP-Za-km-z]{32,44})\b/i,  // ca: followed by address
+    /\bCA[:;]?\s*([1-9A-HJ-NP-Za-km-z]{32,44})\b/i,  // CA: followed by address
+    /\b([1-9A-HJ-NP-Za-km-z]{32,44})\b/               // Just the address
+  ];
+  
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      return match[1] || match[0]; // Return captured group or full match
+    }
+  }
+  
+  return null;
 }
