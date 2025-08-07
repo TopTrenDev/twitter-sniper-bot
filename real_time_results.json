@@ -7,5 +7,41 @@
     "tweetId": "1953261108854186008",
     "timestamp": "2025-08-07T01:05:14.712Z",
     "detectedAt": "2025-08-07T01:05:14.712Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "Dantd7u8CPYNo2pMCgsuhjvLzVTnxSt5d2gFYdeyzEGg",
+    "tweetText": "This is new Solana token CA (Just for Development test)\n\n    CA: Dantd7u8CPYNo2pMCgsuhjvLzVTnxSt5d2gFYdeyzEGg",
+    "tweetId": "1953266400547729890",
+    "timestamp": "2025-08-07T01:26:16.081Z",
+    "detectedAt": "2025-08-07T01:26:16.081Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "Dantd7u8CPYNo2pMCgsuhjvLzVTnxSt5d2gFYdeyzEGg",
+    "tweetText": "This is new Solana token CA (Just for Development test)      CA: Dantd7u8CPYNo2pMCgsuhjvLzVTnxSt5d2gFYdeyzEGg",
+    "tweetId": "1953268026712740081",
+    "timestamp": "2025-08-07T01:32:45.551Z",
+    "detectedAt": "2025-08-07T01:32:45.553Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "Dantd7u8CPYNo2pMCgsuhjvLzVTnxSt5d2gFYdeyzEGg",
+    "tweetText": "This is new Solana token CA (Just for test)      CA: Dantd7u8CPYNo2pMCgsuhjvLzVTnxSt5d2gFYdeyzEGg",
+    "tweetId": "1953274657907310859",
+    "timestamp": "2025-08-07T01:59:05.540Z",
+    "detectedAt": "2025-08-07T01:59:05.540Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "Dantd7u8CPYNo2pMCgsuhjvLzVTnxSt5d2gFYdeyzEGg",
+    "tweetText": "This is test solana token CA (Just for test)  \n\nCA: Dantd7u8CPYNo2pMCgsuhjvLzVTnxSt5d2gFYdeyzEGg",
+    "tweetId": "1953280536195285077",
+    "timestamp": "2025-08-07T02:22:26.095Z",
+    "detectedAt": "2025-08-07T02:22:26.096Z"
   }
 ]

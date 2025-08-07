@@ -6,17 +6,70 @@ dotenv.config();
 const https = require("https");
 
 const RAPID_API_KEY = process.env.RAPID_API_KEYS;
-const username = process.env.USER_NAME; // Fixed: was USER_ID
 const RAPID_HOST_NAME = process.env.RAPID_HOST_NAME;
-const keyword = process.env.KEYWORD; // Fixed: use environment variable
+
+// Parse monitoring configuration from environment variables
+function parseMonitoringConfig() {
+  const config = [];
+  
+  // Read configuration from environment variables
+  // Format: MONITOR_USER1=username1, MONITOR_KEYWORD1=keyword1
+  //         MONITOR_USER2=username2, MONITOR_KEYWORD2=keyword2, etc.
+  
+  let index = 1;
+  while (true) {
+    const userKey = `MONITOR_USER${index}`;
+    const keywordKey = `MONITOR_KEYWORD${index}`;
+    
+    const username = process.env[userKey];
+    const keyword = process.env[keywordKey];
+    
+    if (!username || !keyword) {
+      break; // Stop when no more configuration found
+    }
+    
+    config.push({
+      username: username.trim(),
+      keyword: keyword.trim()
+    });
+    
+    index++;
+  }
+  
+  return config;
+}
+
+// Get monitoring configuration
+const MONITORING_CONFIG = parseMonitoringConfig();
+
+// Fallback to single user if no multi-user config found
+if (MONITORING_CONFIG.length === 0) {
+  const username = process.env.USER_NAME;
+  const keyword = process.env.KEYWORD;
+  
+  if (username && keyword) {
+    MONITORING_CONFIG.push({
+      username: username.trim(),
+      keyword: keyword.trim()
+    });
+  }
+}
+
+// Parse loop time from environment (in minutes)
+const LOOP_TIME_MINUTES = parseInt(process.env.LOOP_TIME) || 0; // 0 means no timeout
+const LOOP_TIME_MS = LOOP_TIME_MINUTES * 60 * 1000; // Convert to milliseconds
 
 // Cache file for storing username to userID mappings
 const CACHE_FILE = "user_cache.json";
 
 // Global variables for real-time monitoring
-let lastProcessedTweetId = null;
+let lastProcessedTweetIds = {}; // Track last tweet ID for each user
 let isMonitoring = false;
 let monitoringInterval = null;
+let timeoutTimer = null; // Timer for loop timeout
+let startTime = null; // Track when monitoring started
+let activeMonitoringIntervals = {}; // Track individual monitoring intervals for each user-keyword pair
+let activePairs = new Set(); // Track which user-keyword pairs are still active
 
 // Function to load cached user IDs
 function loadUserCache() {
@@ -97,30 +150,72 @@ function getUserId(username, callback) {
   req.end();
 }
 
-// Real-time monitoring function
-function startRealTimeMonitoring(userId) {
+// Real-time monitoring function for multiple users
+function startMultiUserMonitoring() {
   if (isMonitoring) {
     console.log("🔄 Already monitoring, stopping previous session...");
     stopRealTimeMonitoring();
   }
 
-  console.log("🚀 Starting real-time monitoring...");
-  console.log(`🎯 Monitoring @${username} for tweets with keyword "${keyword}"`);
+  if (MONITORING_CONFIG.length === 0) {
+    console.error("❌ No monitoring configuration found!");
+    console.log("💡 Please set up your .env file with monitoring configuration:");
+    console.log("   MONITOR_USER1=username1");
+    console.log("   MONITOR_KEYWORD1=keyword1");
+    console.log("   MONITOR_USER2=username2");
+    console.log("   MONITOR_KEYWORD2=keyword2");
+    return;
+  }
+
+  console.log("🚀 Starting multi-user real-time monitoring...");
+  console.log(`📊 Monitoring ${MONITORING_CONFIG.length} user-keyword combinations:`);
+  
+  MONITORING_CONFIG.forEach((config, index) => {
+    console.log(`  ${index + 1}. @${config.username} - keyword: "${config.keyword}"`);
+    // Add to active pairs
+    const pairKey = `${config.username}-${config.keyword}`;
+    activePairs.add(pairKey);
+  });
+  
   console.log("⏰ Checking for new tweets every 2 seconds...");
   
   isMonitoring = true;
+  startTime = new Date(); // Set start time
+  if (LOOP_TIME_MS > 0) {
+    timeoutTimer = setTimeout(() => {
+      console.log(`\n⚠️ Monitoring timeout reached (${LOOP_TIME_MINUTES} minutes). Stopping all monitoring.`);
+      stopRealTimeMonitoring();
+      process.exit(0); // Exit the program
+    }, LOOP_TIME_MS);
+  }
   
-  // Set initial baseline - get the latest tweet ID as starting point
-  setInitialBaseline(userId);
+  // Start monitoring ALL users simultaneously
+  MONITORING_CONFIG.forEach((config) => {
+    startMonitoringUser(config);
+  });
+}
+
+// Start monitoring a specific user
+function startMonitoringUser(config) {
+  console.log(`\n🎯 Starting monitoring for @${config.username} with keyword "${config.keyword}"`);
   
-  // Set up continuous monitoring
-  monitoringInterval = setInterval(() => {
-    checkForNewTweets(userId);
-  }, 2000); // Check every 2 seconds
+  // Get user ID and start monitoring
+  getUserId(config.username, (err, userId) => {
+    if (err) {
+      console.error(`❌ Failed to get user ID for @${config.username}:`, err);
+      // Remove from active pairs if user ID fetch failed
+      const pairKey = `${config.username}-${config.keyword}`;
+      activePairs.delete(pairKey);
+      return;
+    }
+    
+    console.log(`✅ Got user ID for @${config.username}: ${userId}`);
+    setInitialBaseline(userId, config);
+  });
 }
 
 // Set initial baseline
-function setInitialBaseline(userId) {
+function setInitialBaseline(userId, config) {
   const options = {
     method: "GET",
     hostname: RAPID_HOST_NAME,
@@ -139,7 +234,7 @@ function setInitialBaseline(userId) {
         const json = JSON.parse(data);
         
         if (json.message) {
-          console.log(`❌ API Error: ${json.message}`);
+          console.log(`❌ API Error for @${config.username}: ${json.message}`);
           return;
         }
 
@@ -152,12 +247,15 @@ function setInitialBaseline(userId) {
 
         if (tweets.length > 0) {
           const latestTweetId = tweets[0].id_str || tweets[0].id;
-          lastProcessedTweetId = latestTweetId;
-          console.log(`📊 Baseline set: Latest tweet ID = ${latestTweetId}`);
-          console.log(`⏳ Waiting for new tweets...`);
+          lastProcessedTweetIds[config.username] = latestTweetId;
+          console.log(`📊 Baseline set for @${config.username}: Latest tweet ID = ${latestTweetId}`);
+          console.log(`⏳ Waiting for new tweets from @${config.username}...`);
+          
+          // Start continuous monitoring for this user
+          startContinuousMonitoring(userId, config);
         }
       } catch (err) {
-        console.error("Error setting baseline:", err);
+        console.error(`Error setting baseline for @${config.username}:`, err);
       }
     });
   });
@@ -166,22 +264,47 @@ function setInitialBaseline(userId) {
   req.end();
 }
 
-// Stop monitoring
-function stopRealTimeMonitoring() {
-  if (monitoringInterval) {
-    clearInterval(monitoringInterval);
-    monitoringInterval = null;
+// Start continuous monitoring for a user
+function startContinuousMonitoring(userId, config) {
+  const pairKey = `${config.username}-${config.keyword}`;
+  
+  // Set up continuous monitoring for this specific user
+  const userInterval = setInterval(() => {
+    checkForNewTweets(userId, config, userInterval);
+  }, 2000); // Check every 2 seconds
+  
+  // Store the interval reference
+  activeMonitoringIntervals[pairKey] = userInterval;
+}
+
+// Stop monitoring for a specific user-keyword pair
+function stopMonitoringPair(config) {
+  const pairKey = `${config.username}-${config.keyword}`;
+  
+  if (activeMonitoringIntervals[pairKey]) {
+    clearInterval(activeMonitoringIntervals[pairKey]);
+    delete activeMonitoringIntervals[pairKey];
+    activePairs.delete(pairKey);
+    
+    console.log(`⏹️ Stopped monitoring @${config.username} for keyword "${config.keyword}"`);
+    
+    // Check if all pairs are stopped
+    if (activePairs.size === 0) {
+      console.log(`\n✅ All monitoring pairs completed. Stopping all monitoring.`);
+      stopRealTimeMonitoring();
+      process.exit(0);
+    } else {
+      console.log(`📊 ${activePairs.size} pair(s) still monitoring...`);
+    }
   }
-  isMonitoring = false;
-  console.log("⏹️  Monitoring stopped");
 }
 
 // Check for new tweets
-function checkForNewTweets(userId) {
+function checkForNewTweets(userId, config, userInterval) {
   const options = {
     method: "GET",
     hostname: RAPID_HOST_NAME,
-    path: `/user-tweets?user=${userId}&count=1`, // Get latest 1 tweet
+    path: `/user-tweets?user=${userId}&count=1`,
     headers: {
       "x-rapidapi-key": RAPID_API_KEY,
       "x-rapidapi-host": RAPID_HOST_NAME,
@@ -193,7 +316,7 @@ function checkForNewTweets(userId) {
     res.on("data", (chunk) => (data += chunk));
     res.on("end", () => {
       try {
-        console.log(`🔍 Checking for new tweets...`);
+        console.log(`🔍 Checking for new tweets from @${config.username}...`);
 
         const json = JSON.parse(data);
 
@@ -218,27 +341,28 @@ function checkForNewTweets(userId) {
 
         const currentTweet = tweets[0];
         const currentTweetId = currentTweet.id_str || currentTweet.id;
+        const lastTweetId = lastProcessedTweetIds[config.username];
 
         // Check if this is a truly new tweet (not the baseline tweet)
-        if (lastProcessedTweetId && currentTweetId !== lastProcessedTweetId) {
-          console.log(`\n🆕 NEW TWEET DETECTED! Tweet ID: ${currentTweetId}`);
+        if (lastTweetId && currentTweetId !== lastTweetId) {
+          console.log(`\n🆕 NEW TWEET DETECTED from @${config.username}! Tweet ID: ${currentTweetId}`);
           
           // Update baseline to current tweet
-          lastProcessedTweetId = currentTweetId;
+          lastProcessedTweetIds[config.username] = currentTweetId;
           
           // Check if this new tweet matches our criteria
           const text = currentTweet.full_text || currentTweet.text || "";
-          const hasKeyword = text.toLowerCase().includes(keyword.toLowerCase());
+          const hasKeyword = text.toLowerCase().includes(config.keyword.toLowerCase());
           const hasTokenCA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/.test(text);
           
           if (hasKeyword && hasTokenCA) {
-            console.log(`🎯 MATCH FOUND! Tweet contains keyword "${keyword}" AND token CA!`);
+            console.log(`🎯 MATCH FOUND! Tweet from @${config.username} contains keyword "${config.keyword}" AND token CA!`);
             
             const tokenCA = extractTokenCA(text);
             
             const result = {
-              username: username,
-              keyword: keyword,
+              username: config.username,
+              keyword: config.keyword,
               tokenCA: tokenCA,
               tweetText: text,
               tweetId: currentTweetId,
@@ -258,12 +382,11 @@ function checkForNewTweets(userId) {
             console.log(`  Tweet ID: ${result.tweetId}`);
             console.log(`  Detected at: ${result.detectedAt}`);
             
-            // Stop monitoring after finding a match
-            console.log(`\n✅ Target found! Stopping monitoring...`);
-            stopRealTimeMonitoring();
-            process.exit(0); // Exit the program
+            // Stop monitoring only this specific pair
+            console.log(`\n✅ Target found for @${config.username} with keyword "${config.keyword}"! Stopping this pair only.`);
+            stopMonitoringPair(config);
           } else {
-            console.log(`❌ Tweet doesn't match criteria (keyword: ${hasKeyword}, token CA: ${hasTokenCA})`);
+            console.log(`❌ Tweet from @${config.username} doesn't match criteria (keyword: ${hasKeyword}, token CA: ${hasTokenCA})`);
           }
         }
       } catch (err) {
@@ -274,6 +397,28 @@ function checkForNewTweets(userId) {
 
   req.on("error", (err) => console.error("Request error:", err));
   req.end();
+}
+
+// Stop monitoring
+function stopRealTimeMonitoring() {
+  if (monitoringInterval) {
+    clearInterval(monitoringInterval);
+    monitoringInterval = null;
+  }
+  
+  // Stop all active monitoring intervals
+  Object.keys(activeMonitoringIntervals).forEach(pairKey => {
+    clearInterval(activeMonitoringIntervals[pairKey]);
+  });
+  activeMonitoringIntervals = {};
+  activePairs.clear();
+  
+  if (timeoutTimer) {
+    clearTimeout(timeoutTimer);
+    timeoutTimer = null;
+  }
+  isMonitoring = false;
+  console.log("⏹️  All monitoring stopped");
 }
 
 // Save result to file
@@ -298,15 +443,8 @@ function saveResultToFile(result) {
   }
 }
 
-// 🔁 Execute monitoring
-getUserId(username, (err, userId) => {
-  if (err) {
-    console.error("❌ Failed to get user ID:", err);
-    return;
-  }
-  console.log(`✅ Got user ID for @${username}: ${userId}`);
-  startRealTimeMonitoring(userId);
-});
+// 🔁 Execute multi-user monitoring
+startMultiUserMonitoring();
 
 // Handle graceful shutdown
 process.on('SIGINT', () => {
@@ -314,19 +452,6 @@ process.on('SIGINT', () => {
   stopRealTimeMonitoring();
   process.exit(0);
 });
-
-function filterTweets(tweets, keyword) {
-  // Regex for any token mint address (32-44 characters) without requiring "CA:" prefix
-  const tokenMintRegex = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/;
-  // You can adjust the regex for Ethereum or other blockchains
-
-  return tweets.filter((tweet) => {
-    const text = tweet.full_text || tweet.text || "";
-    const hasKeyword = text.toLowerCase().includes(keyword.toLowerCase());
-    const hasTokenMint = tokenMintRegex.test(text);
-    return hasKeyword && hasTokenMint;
-  });
-}
 
 // Function to extract token CA from tweet text
 function extractTokenCA(text) {
