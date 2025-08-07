@@ -13,6 +13,11 @@ const keyword = process.env.KEYWORD; // Fixed: use environment variable
 // Cache file for storing username to userID mappings
 const CACHE_FILE = "user_cache.json";
 
+// Global variables for real-time monitoring
+let lastProcessedTweetId = null;
+let isMonitoring = false;
+let monitoringInterval = null;
+
 // Function to load cached user IDs
 function loadUserCache() {
   try {
@@ -92,12 +97,34 @@ function getUserId(username, callback) {
   req.end();
 }
 
-// Step 2: Get tweets from user ID
-function getUserTweets(userId) {
+// Real-time monitoring function
+function startRealTimeMonitoring(userId) {
+  if (isMonitoring) {
+    console.log("🔄 Already monitoring, stopping previous session...");
+    stopRealTimeMonitoring();
+  }
+
+  console.log("🚀 Starting real-time monitoring...");
+  console.log(`🎯 Monitoring @${username} for tweets with keyword "${keyword}"`);
+  console.log("⏰ Checking for new tweets every 2 seconds...");
+  
+  isMonitoring = true;
+  
+  // Set initial baseline - get the latest tweet ID as starting point
+  setInitialBaseline(userId);
+  
+  // Set up continuous monitoring
+  monitoringInterval = setInterval(() => {
+    checkForNewTweets(userId);
+  }, 2000); // Check every 2 seconds
+}
+
+// Set initial baseline
+function setInitialBaseline(userId) {
   const options = {
     method: "GET",
     hostname: RAPID_HOST_NAME,
-    path: `/user-tweets?user=${userId}&count=10`,
+    path: `/user-tweets?user=${userId}&count=1`,
     headers: {
       "x-rapidapi-key": RAPID_API_KEY,
       "x-rapidapi-host": RAPID_HOST_NAME,
@@ -109,6 +136,65 @@ function getUserTweets(userId) {
     res.on("data", (chunk) => (data += chunk));
     res.on("end", () => {
       try {
+        const json = JSON.parse(data);
+        
+        if (json.message) {
+          console.log(`❌ API Error: ${json.message}`);
+          return;
+        }
+
+        const entries = json.result?.timeline?.instructions?.[2]?.entries || [];
+        const tweets = entries
+          .map(
+            (entry) => entry.content?.itemContent?.tweet_results?.result?.legacy
+          )
+          .filter(Boolean);
+
+        if (tweets.length > 0) {
+          const latestTweetId = tweets[0].id_str || tweets[0].id;
+          lastProcessedTweetId = latestTweetId;
+          console.log(`📊 Baseline set: Latest tweet ID = ${latestTweetId}`);
+          console.log(`⏳ Waiting for new tweets...`);
+        }
+      } catch (err) {
+        console.error("Error setting baseline:", err);
+      }
+    });
+  });
+
+  req.on("error", (err) => console.error("Request error:", err));
+  req.end();
+}
+
+// Stop monitoring
+function stopRealTimeMonitoring() {
+  if (monitoringInterval) {
+    clearInterval(monitoringInterval);
+    monitoringInterval = null;
+  }
+  isMonitoring = false;
+  console.log("⏹️  Monitoring stopped");
+}
+
+// Check for new tweets
+function checkForNewTweets(userId) {
+  const options = {
+    method: "GET",
+    hostname: RAPID_HOST_NAME,
+    path: `/user-tweets?user=${userId}&count=1`, // Get latest 1 tweet
+    headers: {
+      "x-rapidapi-key": RAPID_API_KEY,
+      "x-rapidapi-host": RAPID_HOST_NAME,
+    },
+  };
+
+  const req = https.request(options, (res) => {
+    let data = "";
+    res.on("data", (chunk) => (data += chunk));
+    res.on("end", () => {
+      try {
+        console.log(`🔍 Checking for new tweets...`);
+
         const json = JSON.parse(data);
 
         // Check for API errors first
@@ -126,120 +212,62 @@ function getUserTweets(userId) {
           )
           .filter(Boolean);
 
-        if (!tweets || !Array.isArray(tweets)) {
-          console.log("❌ No tweets found in response");
+        if (!tweets || !Array.isArray(tweets) || tweets.length === 0) {
           return;
         }
 
-        // Debug: Check each filter separately
-        const keywordOnly = tweets.filter((tweet) =>
-          (tweet.full_text || tweet.text || "")
-            .toLowerCase()
-            .includes(keyword.toLowerCase())
-        );
+        const currentTweet = tweets[0];
+        const currentTweetId = currentTweet.id_str || currentTweet.id;
 
-        const caRegex = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/;
-        const caOnly = tweets.filter((tweet) =>
-          caRegex.test(tweet.full_text || tweet.text || "")
-        );
-
-        // Check for any token mint address (32-44 characters)
-        const tokenMintRegex = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/;
-        const tokenMintOnly = tweets.filter((tweet) =>
-          tokenMintRegex.test(tweet.full_text || tweet.text || "")
-        );
-
-        console.log(`\n🔍 DEBUG INFO:`);
-        console.log(`Total tweets fetched: ${tweets.length}`);
-        console.log(`Tweets with keyword "${keyword}": ${keywordOnly.length}`);
-        console.log(`Tweets with token CA: ${caOnly.length}`);
-        console.log(`Tweets with token mint address: ${tokenMintOnly.length}`);
-
-        // Show some examples
-        if (keywordOnly.length > 0) {
-          console.log(`\n📝 Example tweets with keyword:`);
-          keywordOnly.slice(0, 2).forEach((tweet, i) => {
-            const text = tweet.full_text || tweet.text || "";
-            console.log(`  ${i + 1}: "${text.substring(0, 100)}..."`);
-          });
-        }
-
-        if (tokenMintOnly.length > 0) {
-          console.log(`\n💰 Example tweets with token mint address:`);
-          tokenMintOnly.slice(0, 2).forEach((tweet, i) => {
-            const text = tweet.full_text || tweet.text || "";
-            console.log(`  ${i + 1}: "${text.substring(0, 100)}..."`);
-          });
-        }
-
-        const filtered = filterTweets(tweets, keyword);
-
-        // Console log only the matching tweets
-        if (filtered.length > 0) {
-          console.log(
-            `\n🎯 Found ${filtered.length} tweets with keyword "${keyword}" AND token CA:`
-          );
-          filtered.forEach((tweet, i) => {
-            const text = tweet.full_text || tweet.text || "";
-            console.log(`\nTweet ${i + 1}: "${text}"`);
-          });
-        } else {
-          console.log(
-            `\n❌ No tweets found with keyword "${keyword}" AND token CA.`
-          );
-        }
-
-        // Save only the matching tweets to file
-        if (filtered.length > 0) {
-          // Create structured results with username, keyword, and token CA
-          const structuredResults = filtered.map((tweet, i) => {
-            const text = tweet.full_text || tweet.text || "";
+        // Check if this is a truly new tweet (not the baseline tweet)
+        if (lastProcessedTweetId && currentTweetId !== lastProcessedTweetId) {
+          console.log(`\n🆕 NEW TWEET DETECTED! Tweet ID: ${currentTweetId}`);
+          
+          // Update baseline to current tweet
+          lastProcessedTweetId = currentTweetId;
+          
+          // Check if this new tweet matches our criteria
+          const text = currentTweet.full_text || currentTweet.text || "";
+          const hasKeyword = text.toLowerCase().includes(keyword.toLowerCase());
+          const hasTokenCA = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/.test(text);
+          
+          if (hasKeyword && hasTokenCA) {
+            console.log(`🎯 MATCH FOUND! Tweet contains keyword "${keyword}" AND token CA!`);
+            
             const tokenCA = extractTokenCA(text);
             
-            return {
+            const result = {
               username: username,
               keyword: keyword,
               tokenCA: tokenCA,
               tweetText: text,
-              tweetId: tweet.id_str || tweet.id,
-              timestamp: new Date().toISOString()
+              tweetId: currentTweetId,
+              timestamp: new Date().toISOString(),
+              detectedAt: new Date().toISOString()
             };
-          });
-
-          // Save detailed results to JSON file
-          fs.writeFileSync(
-            "filtered_results.json",
-            JSON.stringify(structuredResults, null, 2)
-          );
-          
-          console.log(`✅ Found ${filtered.length} matching tweets`);
-          console.log(`📄 Results saved to filtered_results.json`);
-          
-          // Log the structured results
-          structuredResults.forEach((result, i) => {
-            console.log(`\n🎯 Result ${i + 1}:`);
+            
+            // Save to results file
+            saveResultToFile(result);
+            
+            // Log the result
+            console.log(`\n🚨 TARGET DETECTED!`);
             console.log(`  Username: @${result.username}`);
             console.log(`  Keyword: "${result.keyword}"`);
             console.log(`  Token CA: ${result.tokenCA}`);
             console.log(`  Tweet: "${result.tweetText.substring(0, 100)}..."`);
-          });
-        } else {
-          const noResults = {
-            username: username,
-            keyword: keyword,
-            timestamp: new Date().toISOString(),
-            message: `No tweets found with keyword "${keyword}" AND token CA.`
-          };
-          
-          fs.writeFileSync(
-            "filtered_results.json",
-            JSON.stringify([noResults], null, 2)
-          );
-          
-          console.log(`❌ No tweets found with keyword "${keyword}" AND token CA.`);
+            console.log(`  Tweet ID: ${result.tweetId}`);
+            console.log(`  Detected at: ${result.detectedAt}`);
+            
+            // Stop monitoring after finding a match
+            console.log(`\n✅ Target found! Stopping monitoring...`);
+            stopRealTimeMonitoring();
+            process.exit(0); // Exit the program
+          } else {
+            console.log(`❌ Tweet doesn't match criteria (keyword: ${hasKeyword}, token CA: ${hasTokenCA})`);
+          }
         }
       } catch (err) {
-        console.error("Error parsing tweets JSON:", err);
+        console.error("Error checking for new tweets:", err);
       }
     });
   });
@@ -248,14 +276,43 @@ function getUserTweets(userId) {
   req.end();
 }
 
-// 🔁 Execute both
+// Save result to file
+function saveResultToFile(result) {
+  try {
+    let results = [];
+    const resultsFile = "real_time_results.json";
+    
+    // Load existing results
+    if (fs.existsSync(resultsFile)) {
+      const existingData = fs.readFileSync(resultsFile, 'utf8');
+      results = JSON.parse(existingData);
+    }
+    
+    // Add new result
+    results.push(result);
+    
+    // Save updated results
+    fs.writeFileSync(resultsFile, JSON.stringify(results, null, 2));
+  } catch (error) {
+    console.error("Error saving result:", error);
+  }
+}
+
+// 🔁 Execute monitoring
 getUserId(username, (err, userId) => {
   if (err) {
     console.error("❌ Failed to get user ID:", err);
     return;
   }
   console.log(`✅ Got user ID for @${username}: ${userId}`);
-  getUserTweets(userId);
+  startRealTimeMonitoring(userId);
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\n🛑 Shutting down gracefully...');
+  stopRealTimeMonitoring();
+  process.exit(0);
 });
 
 function filterTweets(tweets, keyword) {
