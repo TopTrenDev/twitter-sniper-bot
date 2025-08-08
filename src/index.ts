@@ -1,5 +1,14 @@
 import * as fs from "fs";
 import dotenv from "dotenv";
+import {
+  Connection,
+  Transaction,
+  VersionedTransaction,
+  Keypair,
+  sendAndConfirmRawTransaction,
+} from "@solana/web3.js";
+import fetch from "node-fetch";
+import bs58 from "bs58";
 
 dotenv.config();
 
@@ -7,6 +16,215 @@ const https = require("https");
 
 const RAPID_API_KEY = process.env.RAPID_API_KEYS;
 const RAPID_HOST_NAME = process.env.RAPID_HOST_NAME;
+
+// Jupiter and Solana configuration
+const QUICKNODE_RPC = process.env.QUICKNODE_RPC_URL;
+const WALLET_PRIVATE_KEY = process.env.WALLET_PRIVATE_KEY;
+
+// Validate Solana environment variables
+if (!QUICKNODE_RPC) {
+  console.warn(
+    "⚠️ QUICKNODE_RPC_URL not set - trading functionality will be disabled"
+  );
+}
+if (!WALLET_PRIVATE_KEY) {
+  console.warn(
+    "⚠️ WALLET_PRIVATE_KEY not set - trading functionality will be disabled"
+  );
+}
+
+// Initialize Solana connection and wallet if credentials are available
+let connection: Connection | null = null;
+let buyer: Keypair | null = null;
+
+if (QUICKNODE_RPC && WALLET_PRIVATE_KEY) {
+  try {
+    connection = new Connection(QUICKNODE_RPC, "confirmed");
+    buyer = Keypair.fromSecretKey(bs58.decode(WALLET_PRIVATE_KEY));
+    console.log("✅ Solana connection and wallet initialized for trading");
+  } catch (error) {
+    console.error("❌ Failed to initialize Solana connection:", error);
+  }
+}
+
+// Jupiter API configuration
+const JUPITER_API_BASE = "https://jupiter-swap-api.quiknode.pro/3D965F1CB197";
+const inputMint = "So11111111111111111111111111111111111111112"; // wSOL
+const slippageBps = 100; // 1%
+
+// Jupiter trading functions
+async function getJupiterQuote(
+  inputMint: string,
+  outputMint: string,
+  amount: string,
+  slippageBps: number
+) {
+  console.log("🔄 Getting Jupiter quote...");
+  console.log(
+    `Input: ${amount} lamports of ${inputMint} (${parseInt(amount) / 1e9} SOL)`
+  );
+  console.log(`Output: ${outputMint}`);
+  console.log(`Slippage: ${slippageBps} bps`);
+
+  // Validate amount parameter
+  const amountInt = parseInt(amount);
+  if (isNaN(amountInt) || amountInt <= 0) {
+    throw new Error(
+      `Invalid amount parameter: ${amount}. Must be a positive integer.`
+    );
+  }
+
+  try {
+    const url = `${JUPITER_API_BASE}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInt}&slippageBps=${slippageBps}`;
+
+    const response = await fetch(url, {
+      // @ts-ignore - timeout is supported in node-fetch
+      timeout: 30000,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ Jupiter API error:", errorText);
+      throw new Error(
+        `Jupiter API failed: ${response.status} ${response.statusText}`
+      );
+    }
+
+    const data = (await response.json()) as any;
+    console.log("✅ Quote received successfully");
+    console.log(`Quote: ${data.outAmount} output tokens`);
+    return data;
+  } catch (error: any) {
+    console.error("❌ Quote error:", error.message);
+    throw error;
+  }
+}
+
+async function buildJupiterSwapTransaction(quote: any, userPublicKey: string) {
+  console.log("🔨 Building Jupiter swap transaction...");
+
+  try {
+    const url = `${JUPITER_API_BASE}/swap`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        quoteResponse: quote,
+        userPublicKey,
+        wrapAndUnwrapSol: true,
+        dynamicComputeUnitLimit: true,
+        prioritizationFeeLamports: 1000,
+      }),
+      // @ts-ignore - timeout is supported in node-fetch
+      timeout: 30000,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ Jupiter API swap error:", errorText);
+      throw new Error(
+        `Jupiter API swap failed: ${response.status} ${response.statusText}`
+      );
+    }
+
+    const data = (await response.json()) as any;
+    console.log("✅ Swap transaction built successfully");
+    return data.swapTransaction;
+  } catch (error: any) {
+    console.error("❌ Swap transaction build error:", error.message);
+    throw error;
+  }
+}
+
+async function executeTokenPurchase(tokenCA: string, amountInSOL: number) {
+  if (!connection || !buyer) {
+    console.error("❌ Trading not enabled - missing Solana credentials");
+    return false;
+  }
+
+  // Validate amount
+  if (isNaN(amountInSOL) || amountInSOL <= 0) {
+    console.error(
+      `❌ Invalid amount: ${amountInSOL} SOL. Must be a positive number.`
+    );
+    return false;
+  }
+
+  try {
+    console.log(`🚀 Executing token purchase for CA: ${tokenCA}`);
+    console.log(`💰 Amount: ${amountInSOL} SOL`);
+
+    const amountIn = Math.floor(amountInSOL * 1e9).toString(); // Convert SOL to lamports and ensure it's an integer
+
+    // Test RPC connection first
+    console.log("🔍 Testing RPC connection...");
+    const slot = await connection.getSlot();
+    console.log("✅ RPC connection working, current slot:", slot);
+
+    // Get Jupiter quote
+    const quote = await getJupiterQuote(
+      inputMint,
+      tokenCA,
+      amountIn,
+      slippageBps
+    );
+
+    // Check if we have a valid quote
+    if (!quote || !quote.outAmount) {
+      console.error("❌ No valid quote received");
+      return false;
+    }
+
+    console.log(`✅ Quote received: ${quote.outAmount} output tokens`);
+
+    // Build swap transaction
+    const swapTransaction = await buildJupiterSwapTransaction(
+      quote,
+      buyer.publicKey.toBase58()
+    );
+
+    // Send transaction using QuickNode RPC
+    console.log("📡 Sending transaction...");
+
+    // Try to deserialize as versioned transaction first, then legacy
+    let tx;
+    let isVersioned = false;
+    try {
+      tx = VersionedTransaction.deserialize(
+        Buffer.from(swapTransaction, "base64")
+      );
+      console.log("✅ Using versioned transaction");
+      isVersioned = true;
+    } catch (versionedError) {
+      console.log("📝 Falling back to legacy transaction");
+      tx = Transaction.from(Buffer.from(swapTransaction, "base64"));
+    }
+
+    // Sign the transaction
+    if (isVersioned) {
+      (tx as VersionedTransaction).sign([buyer]);
+    } else {
+      (tx as Transaction).sign(buyer);
+    }
+
+    const txid = await sendAndConfirmRawTransaction(
+      connection,
+      Buffer.from(
+        isVersioned
+          ? (tx as VersionedTransaction).serialize()
+          : (tx as Transaction).serialize()
+      )
+    );
+
+    console.log("🎉 Token purchase executed successfully!");
+    console.log("📋 Transaction ID:", txid);
+    return true;
+  } catch (error) {
+    console.error("❌ Error during token purchase:", error);
+    return false;
+  }
+}
 
 // Parse monitoring configuration from environment variables
 function parseMonitoringConfig() {
@@ -292,8 +510,8 @@ function startContinuousMonitoring(userId, config) {
   const pairKey = `${config.username}-${config.keyword}`;
 
   // Set up continuous monitoring for this specific user
-  const userInterval = setInterval(() => {
-    checkForNewTweets(userId, config, userInterval);
+  const userInterval = setInterval(async () => {
+    await checkForNewTweets(userId, config, userInterval);
   }, 2000); // Check every 2 seconds
 
   // Store the interval reference
@@ -310,7 +528,7 @@ function stopMonitoringPair(config) {
     activePairs.delete(pairKey);
 
     console.log(
-      `⏹️ Stopped monitoring @${config.username} for keyword "${config.keyword}"`
+      `⏹️  Stopped monitoring @${config.username} for keyword "${config.keyword}"`
     );
 
     // Check if all pairs are stopped
@@ -327,7 +545,7 @@ function stopMonitoringPair(config) {
 }
 
 // Check for new tweets
-function checkForNewTweets(userId, config, userInterval) {
+async function checkForNewTweets(userId, config, userInterval) {
   const options = {
     method: "GET",
     hostname: RAPID_HOST_NAME,
@@ -341,7 +559,7 @@ function checkForNewTweets(userId, config, userInterval) {
   const req = https.request(options, (res) => {
     let data = "";
     res.on("data", (chunk) => (data += chunk));
-    res.on("end", () => {
+    res.on("end", async () => {
       try {
         console.log(`🔍 Checking for new tweets from @${config.username}...`);
 
@@ -390,7 +608,7 @@ function checkForNewTweets(userId, config, userInterval) {
               `🎯 MATCH FOUND! Tweet from @${config.username} contains keyword "${config.keyword}"!`
             );
 
-            const result = {
+            const result: any = {
               username: config.username,
               keyword: config.keyword,
               tokenCA: config.tokenCA || null,
@@ -413,6 +631,51 @@ function checkForNewTweets(userId, config, userInterval) {
             console.log(`  Tweet: "${result.tweetText.substring(0, 100)}..."`);
             console.log(`  Tweet ID: ${result.tweetId}`);
             console.log(`  Detected at: ${result.detectedAt}`);
+
+            // Execute token purchase if CA is available and trading is enabled
+            if (result.tokenCA && connection && buyer) {
+              console.log(`\n💰 EXECUTING TOKEN PURCHASE!`);
+              console.log(`  Token CA: ${result.tokenCA}`);
+
+              // Get buy amount from environment or use default
+              let buyAmount = parseFloat(process.env.BUY_AMOUNT || "0.0001");
+
+              // Validate buy amount
+              if (isNaN(buyAmount) || buyAmount <= 0) {
+                console.error(
+                  "❌ Invalid BUY_AMOUNT in environment variables. Using default: 0.0001 SOL"
+                );
+                buyAmount = 0.0001;
+              }
+
+              const purchaseSuccess = await executeTokenPurchase(
+                result.tokenCA,
+                buyAmount
+              );
+
+              if (purchaseSuccess) {
+                console.log(`✅ Token purchase completed successfully!`);
+
+                // Update result with purchase info
+                result.purchaseExecuted = true;
+                result.purchaseAmount = buyAmount;
+                result.purchaseTimestamp = new Date().toISOString();
+
+                // Save updated result
+                saveResultToFile(result);
+              } else {
+                console.log(`❌ Token purchase failed!`);
+                result.purchaseExecuted = false;
+                result.purchaseError = "Purchase execution failed";
+                saveResultToFile(result);
+              }
+            } else if (!result.tokenCA) {
+              console.log(
+                `⚠️ No token CA provided for this match - skipping purchase`
+              );
+            } else {
+              console.log(`⚠️ Trading not enabled - skipping purchase`);
+            }
 
             // Stop monitoring only this specific pair
             console.log(
