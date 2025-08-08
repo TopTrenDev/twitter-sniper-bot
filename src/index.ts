@@ -270,7 +270,14 @@ async function executeTokenPurchase(tokenCA: string, amountInSOL: number) {
       console.log("🎉 Token purchase executed successfully via Astralane!");
       console.log("📋 Transaction ID:", astralaneResponse.result);
 
-      return true;
+      const result: any = {
+        tokenCA: tokenCA,
+        amountInSOL: amountInSOL,
+        timestamp: new Date().toISOString(),
+        buyTxId: astralaneResponse.result,
+      };
+
+      return result;
     } else {
       console.error(
         "❌ Astralane transaction failed:",
@@ -868,21 +875,25 @@ async function checkForNewTweets(userId, config) {
                   : 0.0001;
                 console.log(`  Buy Amount: ${buyAmount} SOL (from config)`);
 
-                const purchaseSuccess = await executeTokenPurchase(
+                const purchaseResult = await executeTokenPurchase(
                   result.tokenCA,
                   buyAmount
                 );
 
-                if (purchaseSuccess) {
+                if (purchaseResult && purchaseResult.buyTxId) {
                   console.log(`✅ Token purchase completed successfully!`);
 
                   // Update result with purchase info
                   result.purchaseExecuted = true;
                   result.purchaseAmount = buyAmount;
                   result.purchaseTimestamp = new Date().toISOString();
+                  result.buyTxId = purchaseResult.buyTxId;
 
-                  // Save updated result
+                  // Save updated result to detection file
                   saveResultToFile(result);
+
+                  // Save buy transaction to separate file
+                  saveBuyTransactionResult(result);
                 } else {
                   console.log(`❌ Token purchase failed!`);
                   result.purchaseExecuted = false;
@@ -966,6 +977,39 @@ function saveResultToFile(result) {
     fs.writeFileSync(resultsFile, JSON.stringify(results, null, 2));
   } catch (error) {
     console.error("Error saving result:", error);
+  }
+}
+
+// Save buy transaction result to file
+function saveBuyTransactionResult(result) {
+  try {
+    let transactions = [];
+    const transactionsFile = "buy_transactions.json";
+
+    // Load existing transactions
+    if (fs.existsSync(transactionsFile)) {
+      const existingData = fs.readFileSync(transactionsFile, "utf8");
+      transactions = JSON.parse(existingData);
+    }
+
+    // Create transaction record with only the required fields
+    const transactionRecord = {
+      username: result.username,
+      keyword: result.keyword,
+      tokenCA: result.tokenCA,
+      buyAmount: result.purchaseAmount,
+      txId: result.buyTxId,
+      timestamp: result.purchaseTimestamp || new Date().toISOString(),
+    };
+
+    // Add new transaction
+    transactions.push(transactionRecord);
+
+    // Save updated transactions
+    fs.writeFileSync(transactionsFile, JSON.stringify(transactions, null, 2));
+    console.log(`💾 Buy transaction saved to ${transactionsFile}`);
+  } catch (error) {
+    console.error("Error saving buy transaction:", error);
   }
 }
 
