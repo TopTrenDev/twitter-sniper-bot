@@ -446,5 +446,26 @@
     "purchaseExecuted": true,
     "purchaseAmount": 0.0001,
     "purchaseTimestamp": "2025-08-08T12:41:49.846Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "Cool Solana",
+    "tweetId": "1953895853195665782",
+    "timestamp": "2025-08-08T19:07:30.381Z",
+    "detectedAt": "2025-08-08T19:07:30.381Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "Cool Solana",
+    "tweetId": "1953895853195665782",
+    "timestamp": "2025-08-08T19:07:30.381Z",
+    "detectedAt": "2025-08-08T19:07:30.381Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0001,
+    "purchaseTimestamp": "2025-08-08T19:07:36.203Z"
   }
 ]

@@ -235,6 +235,7 @@ function parseMonitoringConfig() {
   //         MONITOR_USER2=username2, MONITOR_KEYWORD2=keyword2, MONITOR_CA2=token_ca_address, etc.
 
   let index = 1;
+  console.log("🔍 Parsing monitoring configuration...");
   while (true) {
     const userKey = `MONITOR_USER${index}`;
     const keywordKey = `MONITOR_KEYWORD${index}`;
@@ -244,9 +245,21 @@ function parseMonitoringConfig() {
     const keyword = process.env[keywordKey];
     const tokenCA = process.env[caKey];
 
-    if (!username || !keyword) {
+    if (!username) {
       break; // Stop when no more configuration found
     }
+
+    // Allow empty keywords (empty string is valid)
+    if (keyword === undefined) {
+      console.log(`  ⏹️  Stopping at index ${index} - keyword undefined`);
+      break; // Stop when no more configuration found
+    }
+
+    console.log(
+      `  ✅ Found config ${index}: @${username} - keyword: "${keyword}" - CA: ${
+        tokenCA || "none"
+      }`
+    );
 
     config.push({
       username: username.trim(),
@@ -257,6 +270,7 @@ function parseMonitoringConfig() {
     index++;
   }
 
+  console.log(`📊 Total configurations found: ${config.length}`);
   return config;
 }
 
@@ -269,7 +283,7 @@ if (MONITORING_CONFIG.length === 0) {
   const keyword = process.env.KEYWORD;
   const tokenCA = process.env.TOKEN_CA;
 
-  if (username && keyword) {
+  if (username && keyword !== undefined) {
     MONITORING_CONFIG.push({
       username: username.trim(),
       keyword: keyword.trim(),
@@ -402,10 +416,10 @@ function startMultiUserMonitoring() {
 
   MONITORING_CONFIG.forEach((config, index) => {
     const caInfo = config.tokenCA ? ` - CA: ${config.tokenCA}` : "";
+    const keywordInfo =
+      config.keyword.trim() === "" ? "(any tweet)" : `"${config.keyword}"`;
     console.log(
-      `  ${index + 1}. @${config.username} - keyword: "${
-        config.keyword
-      }"${caInfo}`
+      `  ${index + 1}. @${config.username} - keyword: ${keywordInfo}${caInfo}`
     );
     // Add to active pairs
     const pairKey = `${config.username}-${config.keyword}`;
@@ -441,8 +455,10 @@ function initializeAllUsers() {
 
   MONITORING_CONFIG.forEach((config) => {
     const caInfo = config.tokenCA ? ` and CA "${config.tokenCA}"` : "";
+    const keywordInfo =
+      config.keyword.trim() === "" ? "(any tweet)" : `"${config.keyword}"`;
     console.log(
-      `\n🎯 Initializing @${config.username} with keyword "${config.keyword}"${caInfo}`
+      `\n🎯 Initializing @${config.username} with keyword ${keywordInfo}${caInfo}`
     );
 
     // Get user ID and set baseline
@@ -700,15 +716,21 @@ async function checkForNewTweets(userId, config) {
 
             // Check if this new tweet matches our criteria
             const text = currentTweet.full_text || currentTweet.text || "";
-            const hasKeyword = text
-              .toLowerCase()
-              .includes(config.keyword.toLowerCase());
+
+            // If keyword is empty, any tweet should trigger purchase
+            // If keyword is not empty, check if tweet contains the keyword
+            const hasKeyword =
+              config.keyword.trim() === "" ||
+              text.toLowerCase().includes(config.keyword.toLowerCase());
 
             if (hasKeyword) {
+              const matchReason =
+                config.keyword.trim() === ""
+                  ? "any tweet (no keyword filter)"
+                  : `contains keyword "${config.keyword}"`;
               console.log(
-                `🎯 MATCH FOUND! Tweet from @${config.username} contains keyword "${config.keyword}"!`
+                `🎯 MATCH FOUND! Tweet from @${config.username} ${matchReason}!`
               );
-
               const result: any = {
                 username: config.username,
                 keyword: config.keyword,
@@ -781,13 +803,17 @@ async function checkForNewTweets(userId, config) {
               }
 
               // Stop monitoring only this specific pair
+              const stopReason =
+                config.keyword.trim() === ""
+                  ? "any tweet detected"
+                  : `keyword "${config.keyword}" found`;
               console.log(
-                `\n✅ Target found for @${config.username} with keyword "${config.keyword}"! Stopping this pair only.`
+                `\n✅ Target found for @${config.username} (${stopReason})! Stopping this pair only.`
               );
               stopMonitoringPair(config);
             } else {
               console.log(
-                `❌ Tweet from @${config.username} doesn't match criteria (keyword: ${hasKeyword})`
+                `❌ Tweet from @${config.username} doesn't match criteria (keyword filter: "${config.keyword}")`
               );
             }
           } else {
@@ -857,4 +883,3 @@ process.on("SIGINT", () => {
   stopRealTimeMonitoring();
   process.exit(0);
 });
-
