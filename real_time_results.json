@@ -43,5 +43,32 @@
     "tweetId": "1953280536195285077",
     "timestamp": "2025-08-07T02:22:26.095Z",
     "detectedAt": "2025-08-07T02:22:26.096Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "token1",
+    "tokenCA": "Dantd7u8CPYNo2pMCgsuhjvLzVTnxSt5d2gFYdeyzEGg",
+    "tweetText": "This is test solana token1",
+    "tweetId": "1953484892177588310",
+    "timestamp": "2025-08-07T15:54:27.282Z",
+    "detectedAt": "2025-08-07T15:54:27.283Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "Dantd7u8CPYNo2pMCgsuhjvLzVTnxSt5d2gFYdeyzEGg",
+    "tweetText": "Solana is the future of the Blockchain",
+    "tweetId": "1953485346164932800",
+    "timestamp": "2025-08-07T15:56:16.763Z",
+    "detectedAt": "2025-08-07T15:56:16.764Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "Dantd7u8CPYNo2pMCgsuhjvLzVTnxSt5d2gFYdeyzEGg",
+    "tweetText": "SOLANA",
+    "tweetId": "1953493063747149837",
+    "timestamp": "2025-08-07T16:26:55.278Z",
+    "detectedAt": "2025-08-07T16:26:55.279Z"
   }
 ]
