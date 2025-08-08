@@ -48,7 +48,7 @@ if (QUICKNODE_RPC && WALLET_PRIVATE_KEY) {
 }
 
 // Jupiter API configuration
-const JUPITER_API_BASE = "https://jupiter-swap-api.quiknode.pro/3D965F1CB197";
+const JUPITER_API_BASE = process.env.JUPITER_API_BASE;
 const inputMint = "So11111111111111111111111111111111111111112"; // wSOL
 const slippageBps = 100; // 1%
 
