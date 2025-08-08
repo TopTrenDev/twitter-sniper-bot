@@ -291,8 +291,9 @@ let isMonitoring = false;
 let monitoringInterval = null;
 let timeoutTimer = null; // Timer for loop timeout
 let startTime = null; // Track when monitoring started
-let activeMonitoringIntervals = {}; // Track individual monitoring intervals for each user-keyword pair
 let activePairs = new Set(); // Track which user-keyword pairs are still active
+let userConfigsWithIds = []; // Store user configs with their IDs for cycling
+let currentUserIndex = 0; // Current user index in the cycle
 
 // Function to load cached user IDs
 function loadUserCache() {
@@ -411,7 +412,9 @@ function startMultiUserMonitoring() {
     activePairs.add(pairKey);
   });
 
-  console.log("⏰ Checking for new tweets every 2 seconds...");
+  console.log(
+    "⏰ Cycling through users with 0.5s spacing between each request..."
+  );
 
   isMonitoring = true;
   startTime = new Date(); // Set start time
@@ -425,32 +428,133 @@ function startMultiUserMonitoring() {
     }, LOOP_TIME_MS);
   }
 
-  // Start monitoring ALL users simultaneously
+  // Initialize all users first (get their IDs and set baselines)
+  initializeAllUsers();
+}
+
+// Initialize all users and start cycling monitoring
+function initializeAllUsers() {
+  console.log("🔄 Initializing all users...");
+
+  let initializedCount = 0;
+  const totalUsers = MONITORING_CONFIG.length;
+
   MONITORING_CONFIG.forEach((config) => {
-    startMonitoringUser(config);
+    const caInfo = config.tokenCA ? ` and CA "${config.tokenCA}"` : "";
+    console.log(
+      `\n🎯 Initializing @${config.username} with keyword "${config.keyword}"${caInfo}`
+    );
+
+    // Get user ID and set baseline
+    getUserId(config.username, (err, userId) => {
+      if (err) {
+        console.error(`❌ Failed to get user ID for @${config.username}:`, err);
+        // Remove from active pairs if user ID fetch failed
+        const pairKey = `${config.username}-${config.keyword}`;
+        activePairs.delete(pairKey);
+        initializedCount++;
+
+        if (initializedCount === totalUsers) {
+          startCyclingMonitoring();
+        }
+        return;
+      }
+
+      console.log(`✅ Got user ID for @${config.username}: ${userId}`);
+
+      // Store config with user ID for cycling
+      userConfigsWithIds.push({
+        ...config,
+        userId: userId,
+      });
+
+      // Set initial baseline
+      setInitialBaselineForCycling(userId, config, () => {
+        initializedCount++;
+        if (initializedCount === totalUsers) {
+          startCyclingMonitoring();
+        }
+      });
+    });
   });
 }
 
-// Start monitoring a specific user
-function startMonitoringUser(config) {
-  const caInfo = config.tokenCA ? ` and CA "${config.tokenCA}"` : "";
+// Set initial baseline for cycling approach
+function setInitialBaselineForCycling(userId, config, callback) {
+  const options = {
+    method: "GET",
+    hostname: RAPID_HOST_NAME,
+    path: `/user-tweets?user=${userId}&count=1`,
+    headers: {
+      "x-rapidapi-key": RAPID_API_KEY,
+      "x-rapidapi-host": RAPID_HOST_NAME,
+    },
+  };
+
+  const req = https.request(options, (res) => {
+    let data = "";
+    res.on("data", (chunk) => (data += chunk));
+    res.on("end", () => {
+      try {
+        const json = JSON.parse(data);
+
+        if (json.message) {
+          console.log(`❌ API Error for @${config.username}: ${json.message}`);
+          callback();
+          return;
+        }
+
+        const entries = json.result?.timeline?.instructions?.[2]?.entries || [];
+        const tweets = entries
+          .map(
+            (entry) => entry.content?.itemContent?.tweet_results?.result?.legacy
+          )
+          .filter(Boolean);
+
+        if (tweets.length > 0) {
+          const latestTweetId = tweets[0].id_str || tweets[0].id;
+          lastProcessedTweetIds[config.username] = latestTweetId;
+          console.log(
+            `📊 Baseline set for @${config.username}: Latest tweet ID = ${latestTweetId}`
+          );
+        }
+        callback();
+      } catch (err) {
+        console.error(`Error setting baseline for @${config.username}:`, err);
+        callback();
+      }
+    });
+  });
+
+  req.on("error", (err) => {
+    console.error("Request error:", err);
+    callback();
+  });
+  req.end();
+}
+
+// Start cycling monitoring
+function startCyclingMonitoring() {
+  console.log("🚀 Starting cycling monitoring...");
   console.log(
-    `\n🎯 Starting monitoring for @${config.username} with keyword "${config.keyword}"${caInfo}`
+    `📊 Cycling through ${userConfigsWithIds.length} users with 0.5s spacing`
   );
 
-  // Get user ID and start monitoring
-  getUserId(config.username, (err, userId) => {
-    if (err) {
-      console.error(`❌ Failed to get user ID for @${config.username}:`, err);
-      // Remove from active pairs if user ID fetch failed
-      const pairKey = `${config.username}-${config.keyword}`;
-      activePairs.delete(pairKey);
+  // Start the cycling interval
+  monitoringInterval = setInterval(() => {
+    if (userConfigsWithIds.length === 0) {
+      console.log("❌ No users to monitor");
       return;
     }
 
-    console.log(`✅ Got user ID for @${config.username}: ${userId}`);
-    setInitialBaseline(userId, config);
-  });
+    const currentConfig = userConfigsWithIds[currentUserIndex];
+    if (currentConfig) {
+      checkForNewTweets(currentConfig.userId, currentConfig);
+    }
+
+    // Move to next user
+    currentUserIndex = (currentUserIndex + 1) % userConfigsWithIds.length;
+  }, 500); // 0.5 seconds between each user
 }
 
 // Set initial baseline
@@ -492,8 +596,8 @@ function setInitialBaseline(userId, config) {
           );
           console.log(`⏳ Waiting for new tweets from @${config.username}...`);
 
-          // Start continuous monitoring for this user
-          startContinuousMonitoring(userId, config);
+          // User is now ready for cycling monitoring
+          console.log(`⏳ @${config.username} ready for cycling monitoring...`);
         }
       } catch (err) {
         console.error(`Error setting baseline for @${config.username}:`, err);
@@ -505,47 +609,38 @@ function setInitialBaseline(userId, config) {
   req.end();
 }
 
-// Start continuous monitoring for a user
-function startContinuousMonitoring(userId, config) {
-  const pairKey = `${config.username}-${config.keyword}`;
-
-  // Set up continuous monitoring for this specific user
-  const userInterval = setInterval(async () => {
-    await checkForNewTweets(userId, config, userInterval);
-  }, 2000); // Check every 2 seconds
-
-  // Store the interval reference
-  activeMonitoringIntervals[pairKey] = userInterval;
-}
-
 // Stop monitoring for a specific user-keyword pair
 function stopMonitoringPair(config) {
   const pairKey = `${config.username}-${config.keyword}`;
+  activePairs.delete(pairKey);
 
-  if (activeMonitoringIntervals[pairKey]) {
-    clearInterval(activeMonitoringIntervals[pairKey]);
-    delete activeMonitoringIntervals[pairKey];
-    activePairs.delete(pairKey);
+  console.log(
+    `⏹️  Stopped monitoring @${config.username} for keyword "${config.keyword}"`
+  );
 
+  // Remove from cycling array
+  userConfigsWithIds = userConfigsWithIds.filter(
+    (userConfig) =>
+      !(
+        userConfig.username === config.username &&
+        userConfig.keyword === config.keyword
+      )
+  );
+
+  // Check if all pairs are stopped
+  if (activePairs.size === 0) {
     console.log(
-      `⏹️  Stopped monitoring @${config.username} for keyword "${config.keyword}"`
+      `\n✅ All monitoring pairs completed. Stopping all monitoring.`
     );
-
-    // Check if all pairs are stopped
-    if (activePairs.size === 0) {
-      console.log(
-        `\n✅ All monitoring pairs completed. Stopping all monitoring.`
-      );
-      stopRealTimeMonitoring();
-      process.exit(0);
-    } else {
-      console.log(`📊 ${activePairs.size} pair(s) still monitoring...`);
-    }
+    stopRealTimeMonitoring();
+    process.exit(0);
+  } else {
+    console.log(`📊 ${activePairs.size} pair(s) still monitoring...`);
   }
 }
 
 // Check for new tweets
-async function checkForNewTweets(userId, config, userInterval) {
+async function checkForNewTweets(userId, config) {
   const options = {
     method: "GET",
     hostname: RAPID_HOST_NAME,
@@ -588,103 +683,116 @@ async function checkForNewTweets(userId, config, userInterval) {
         const currentTweetId = currentTweet.id_str || currentTweet.id;
         const lastTweetId = lastProcessedTweetIds[config.username];
 
-        // Check if this is a truly new tweet (not the baseline tweet)
+        // Check if this is a truly new tweet (higher ID than baseline)
         if (lastTweetId && currentTweetId !== lastTweetId) {
-          console.log(
-            `\n🆕 NEW TWEET DETECTED from @${config.username}! Tweet ID: ${currentTweetId}`
-          );
+          // Convert to numbers for proper comparison (Twitter IDs are chronological)
+          const currentIdNum = parseInt(currentTweetId);
+          const lastIdNum = parseInt(lastTweetId);
 
-          // Update baseline to current tweet
-          lastProcessedTweetIds[config.username] = currentTweetId;
-
-          // Check if this new tweet matches our criteria
-          const text = currentTweet.full_text || currentTweet.text || "";
-          const hasKeyword = text
-            .toLowerCase()
-            .includes(config.keyword.toLowerCase());
-
-          if (hasKeyword) {
+          // Only process if current tweet is newer (higher ID)
+          if (currentIdNum > lastIdNum) {
             console.log(
-              `🎯 MATCH FOUND! Tweet from @${config.username} contains keyword "${config.keyword}"!`
+              `\n🆕 NEW TWEET DETECTED from @${config.username}! Tweet ID: ${currentTweetId} (Previous: ${lastTweetId})`
             );
 
-            const result: any = {
-              username: config.username,
-              keyword: config.keyword,
-              tokenCA: config.tokenCA || null,
-              tweetText: text,
-              tweetId: currentTweetId,
-              timestamp: new Date().toISOString(),
-              detectedAt: new Date().toISOString(),
-            };
+            // Update baseline to current tweet
+            lastProcessedTweetIds[config.username] = currentTweetId;
 
-            // Save to results file
-            saveResultToFile(result);
+            // Check if this new tweet matches our criteria
+            const text = currentTweet.full_text || currentTweet.text || "";
+            const hasKeyword = text
+              .toLowerCase()
+              .includes(config.keyword.toLowerCase());
 
-            // Log the result
-            console.log(`\n🚨 TARGET DETECTED!`);
-            console.log(`  Username: @${result.username}`);
-            console.log(`  Keyword: "${result.keyword}"`);
-            if (result.tokenCA) {
-              console.log(`  Token CA: ${result.tokenCA}`);
-            }
-            console.log(`  Tweet: "${result.tweetText.substring(0, 100)}..."`);
-            console.log(`  Tweet ID: ${result.tweetId}`);
-            console.log(`  Detected at: ${result.detectedAt}`);
-
-            // Execute token purchase if CA is available and trading is enabled
-            if (result.tokenCA && connection && buyer) {
-              console.log(`\n💰 EXECUTING TOKEN PURCHASE!`);
-              console.log(`  Token CA: ${result.tokenCA}`);
-
-              // Get buy amount from environment or use default
-              let buyAmount = parseFloat(process.env.BUY_AMOUNT || "0.0001");
-
-              // Validate buy amount
-              if (isNaN(buyAmount) || buyAmount <= 0) {
-                console.error(
-                  "❌ Invalid BUY_AMOUNT in environment variables. Using default: 0.0001 SOL"
-                );
-                buyAmount = 0.0001;
-              }
-
-              const purchaseSuccess = await executeTokenPurchase(
-                result.tokenCA,
-                buyAmount
-              );
-
-              if (purchaseSuccess) {
-                console.log(`✅ Token purchase completed successfully!`);
-
-                // Update result with purchase info
-                result.purchaseExecuted = true;
-                result.purchaseAmount = buyAmount;
-                result.purchaseTimestamp = new Date().toISOString();
-
-                // Save updated result
-                saveResultToFile(result);
-              } else {
-                console.log(`❌ Token purchase failed!`);
-                result.purchaseExecuted = false;
-                result.purchaseError = "Purchase execution failed";
-                saveResultToFile(result);
-              }
-            } else if (!result.tokenCA) {
+            if (hasKeyword) {
               console.log(
-                `⚠️ No token CA provided for this match - skipping purchase`
+                `🎯 MATCH FOUND! Tweet from @${config.username} contains keyword "${config.keyword}"!`
               );
-            } else {
-              console.log(`⚠️ Trading not enabled - skipping purchase`);
-            }
 
-            // Stop monitoring only this specific pair
-            console.log(
-              `\n✅ Target found for @${config.username} with keyword "${config.keyword}"! Stopping this pair only.`
-            );
-            stopMonitoringPair(config);
+              const result: any = {
+                username: config.username,
+                keyword: config.keyword,
+                tokenCA: config.tokenCA || null,
+                tweetText: text,
+                tweetId: currentTweetId,
+                timestamp: new Date().toISOString(),
+                detectedAt: new Date().toISOString(),
+              };
+
+              // Save to results file
+              saveResultToFile(result);
+
+              // Log the result
+              console.log(`\n🚨 TARGET DETECTED!`);
+              console.log(`  Username: @${result.username}`);
+              console.log(`  Keyword: "${result.keyword}"`);
+              if (result.tokenCA) {
+                console.log(`  Token CA: ${result.tokenCA}`);
+              }
+              console.log(
+                `  Tweet: "${result.tweetText.substring(0, 100)}..."`
+              );
+              console.log(`  Tweet ID: ${result.tweetId}`);
+              console.log(`  Detected at: ${result.detectedAt}`);
+
+              // Execute token purchase if CA is available and trading is enabled
+              if (result.tokenCA && connection && buyer) {
+                console.log(`\n💰 EXECUTING TOKEN PURCHASE!`);
+                console.log(`  Token CA: ${result.tokenCA}`);
+
+                // Get buy amount from environment or use default
+                let buyAmount = parseFloat(process.env.BUY_AMOUNT || "0.0001");
+
+                // Validate buy amount
+                if (isNaN(buyAmount) || buyAmount <= 0) {
+                  console.error(
+                    "❌ Invalid BUY_AMOUNT in environment variables. Using default: 0.0001 SOL"
+                  );
+                  buyAmount = 0.0001;
+                }
+
+                const purchaseSuccess = await executeTokenPurchase(
+                  result.tokenCA,
+                  buyAmount
+                );
+
+                if (purchaseSuccess) {
+                  console.log(`✅ Token purchase completed successfully!`);
+
+                  // Update result with purchase info
+                  result.purchaseExecuted = true;
+                  result.purchaseAmount = buyAmount;
+                  result.purchaseTimestamp = new Date().toISOString();
+
+                  // Save updated result
+                  saveResultToFile(result);
+                } else {
+                  console.log(`❌ Token purchase failed!`);
+                  result.purchaseExecuted = false;
+                  result.purchaseError = "Purchase execution failed";
+                  saveResultToFile(result);
+                }
+              } else if (!result.tokenCA) {
+                console.log(
+                  `⚠️ No token CA provided for this match - skipping purchase`
+                );
+              } else {
+                console.log(`⚠️ Trading not enabled - skipping purchase`);
+              }
+
+              // Stop monitoring only this specific pair
+              console.log(
+                `\n✅ Target found for @${config.username} with keyword "${config.keyword}"! Stopping this pair only.`
+              );
+              stopMonitoringPair(config);
+            } else {
+              console.log(
+                `❌ Tweet from @${config.username} doesn't match criteria (keyword: ${hasKeyword})`
+              );
+            }
           } else {
             console.log(
-              `❌ Tweet from @${config.username} doesn't match criteria (keyword: ${hasKeyword})`
+              `⏭️ Skipping tweet from @${config.username} - not newer than baseline (Current: ${currentTweetId}, Baseline: ${lastTweetId})`
             );
           }
         }
@@ -705,12 +813,10 @@ function stopRealTimeMonitoring() {
     monitoringInterval = null;
   }
 
-  // Stop all active monitoring intervals
-  Object.keys(activeMonitoringIntervals).forEach((pairKey) => {
-    clearInterval(activeMonitoringIntervals[pairKey]);
-  });
-  activeMonitoringIntervals = {};
+  // Clear all active pairs and user configs
   activePairs.clear();
+  userConfigsWithIds = [];
+  currentUserIndex = 0;
 
   if (timeoutTimer) {
     clearTimeout(timeoutTimer);
@@ -751,3 +857,4 @@ process.on("SIGINT", () => {
   stopRealTimeMonitoring();
   process.exit(0);
 });
+

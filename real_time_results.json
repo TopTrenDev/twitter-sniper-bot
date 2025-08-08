@@ -257,5 +257,194 @@
     "purchaseExecuted": true,
     "purchaseAmount": 0.0001,
     "purchaseTimestamp": "2025-08-08T06:53:45.379Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "token2022",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "token2022",
+    "tweetId": "1953772460127449409",
+    "timestamp": "2025-08-08T10:57:08.724Z",
+    "detectedAt": "2025-08-08T10:57:08.725Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "token2022",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "token2022",
+    "tweetId": "1953772460127449409",
+    "timestamp": "2025-08-08T10:57:08.724Z",
+    "detectedAt": "2025-08-08T10:57:08.725Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.01,
+    "purchaseTimestamp": "2025-08-08T10:57:14.949Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "spl token",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token",
+    "tweetId": "1953789817998745964",
+    "timestamp": "2025-08-08T12:06:07.969Z",
+    "detectedAt": "2025-08-08T12:06:07.970Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "spl token",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token",
+    "tweetId": "1953789817998745964",
+    "timestamp": "2025-08-08T12:06:07.969Z",
+    "detectedAt": "2025-08-08T12:06:07.970Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0001,
+    "purchaseTimestamp": "2025-08-08T12:06:14.847Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "spl token",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token tweet test",
+    "tweetId": "1953790430484590800",
+    "timestamp": "2025-08-08T12:08:32.574Z",
+    "detectedAt": "2025-08-08T12:08:32.575Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "token",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token",
+    "tweetId": "1953789817998745964",
+    "timestamp": "2025-08-08T12:08:32.702Z",
+    "detectedAt": "2025-08-08T12:08:32.702Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "token",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token tweet test",
+    "tweetId": "1953790430484590800",
+    "timestamp": "2025-08-08T12:08:34.720Z",
+    "detectedAt": "2025-08-08T12:08:34.720Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "spl token",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token tweet test",
+    "tweetId": "1953790430484590800",
+    "timestamp": "2025-08-08T12:08:32.574Z",
+    "detectedAt": "2025-08-08T12:08:32.575Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0001,
+    "purchaseTimestamp": "2025-08-08T12:08:38.271Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "token",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token tweet test",
+    "tweetId": "1953790430484590800",
+    "timestamp": "2025-08-08T12:08:34.720Z",
+    "detectedAt": "2025-08-08T12:08:34.720Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0001,
+    "purchaseTimestamp": "2025-08-08T12:08:38.274Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "token",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token",
+    "tweetId": "1953789817998745964",
+    "timestamp": "2025-08-08T12:08:32.702Z",
+    "detectedAt": "2025-08-08T12:08:32.702Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0001,
+    "purchaseTimestamp": "2025-08-08T12:08:38.276Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "token",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token",
+    "tweetId": "1953793786879885769",
+    "timestamp": "2025-08-08T12:21:54.024Z",
+    "detectedAt": "2025-08-08T12:21:54.025Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "token",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token",
+    "tweetId": "1953793786879885769",
+    "timestamp": "2025-08-08T12:21:54.024Z",
+    "detectedAt": "2025-08-08T12:21:54.025Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0001,
+    "purchaseTimestamp": "2025-08-08T12:22:00.554Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "spl",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token",
+    "tweetId": "1953794653280403868",
+    "timestamp": "2025-08-08T12:25:19.008Z",
+    "detectedAt": "2025-08-08T12:25:19.009Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "spl",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token",
+    "tweetId": "1953794653280403868",
+    "timestamp": "2025-08-08T12:25:19.008Z",
+    "detectedAt": "2025-08-08T12:25:19.009Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0001,
+    "purchaseTimestamp": "2025-08-08T12:25:24.919Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "token",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token 2022",
+    "tweetId": "1953797779962159120",
+    "timestamp": "2025-08-08T12:37:46.366Z",
+    "detectedAt": "2025-08-08T12:37:46.366Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "token",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "spl token 2022",
+    "tweetId": "1953797779962159120",
+    "timestamp": "2025-08-08T12:37:46.366Z",
+    "detectedAt": "2025-08-08T12:37:46.366Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0001,
+    "purchaseTimestamp": "2025-08-08T12:37:52.859Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "2022",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "2022",
+    "tweetId": "1953798765367710008",
+    "timestamp": "2025-08-08T12:41:42.145Z",
+    "detectedAt": "2025-08-08T12:41:42.146Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "2022",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "2022",
+    "tweetId": "1953798765367710008",
+    "timestamp": "2025-08-08T12:41:42.145Z",
+    "detectedAt": "2025-08-08T12:41:42.146Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0001,
+    "purchaseTimestamp": "2025-08-08T12:41:49.846Z"
   }
 ]
