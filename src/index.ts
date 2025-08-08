@@ -2,13 +2,17 @@ import * as fs from "fs";
 import dotenv from "dotenv";
 import {
   Connection,
-  Transaction,
   VersionedTransaction,
   Keypair,
-  sendAndConfirmRawTransaction,
+  PublicKey,
+  SystemProgram,
+  TransactionInstruction,
+  TransactionMessage,
+  AddressLookupTableAccount,
 } from "@solana/web3.js";
 import fetch from "node-fetch";
 import bs58 from "bs58";
+import axios from "axios";
 
 dotenv.config();
 
@@ -51,6 +55,21 @@ if (QUICKNODE_RPC && WALLET_PRIVATE_KEY) {
 const JUPITER_API_BASE = process.env.JUPITER_API_BASE;
 const inputMint = "So11111111111111111111111111111111111111112"; // wSOL
 const slippageBps = 100; // 1%
+
+// Astralane configuration for fast transaction confirmation
+const ASTRALANE_URL = process.env.ASTRALANE_URL;
+const ASTRALANE_API_KEY = process.env.ASTRALANE_API_KEY;
+const TIP = new PublicKey("astra4uejePWneqNaJKuFFA8oonqCE1sqF6b45kDMZm");
+const MIN_TIP_AMOUNT = 100_000; // lamports
+
+// Validate Astralane configuration (optional)
+if (!ASTRALANE_URL || !ASTRALANE_API_KEY) {
+  console.log(
+    "ℹ️ Astralane not configured - will use regular RPC for transaction confirmation"
+  );
+} else {
+  console.log("✅ Astralane configured for fast transaction confirmation");
+}
 
 // Jupiter trading functions
 async function getJupiterQuote(
@@ -100,11 +119,11 @@ async function getJupiterQuote(
   }
 }
 
-async function buildJupiterSwapTransaction(quote: any, userPublicKey: string) {
+async function buildJupiterSwapInstruction(quote: any, userPublicKey: string) {
   console.log("🔨 Building Jupiter swap transaction...");
 
   try {
-    const url = `${JUPITER_API_BASE}/swap`;
+    const url = `${JUPITER_API_BASE}/swap-instructions`;
 
     const response = await fetch(url, {
       method: "POST",
@@ -112,12 +131,7 @@ async function buildJupiterSwapTransaction(quote: any, userPublicKey: string) {
       body: JSON.stringify({
         quoteResponse: quote,
         userPublicKey,
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-        prioritizationFeeLamports: 1000,
       }),
-      // @ts-ignore - timeout is supported in node-fetch
-      timeout: 30000,
     });
 
     if (!response.ok) {
@@ -130,12 +144,46 @@ async function buildJupiterSwapTransaction(quote: any, userPublicKey: string) {
 
     const data = (await response.json()) as any;
     console.log("✅ Swap transaction built successfully");
-    return data.swapTransaction;
+    return data;
   } catch (error: any) {
     console.error("❌ Swap transaction build error:", error.message);
     throw error;
   }
 }
+
+const deserializeInstruction = (instruction) => {
+  return new TransactionInstruction({
+    programId: new PublicKey(instruction.programId),
+    keys: instruction.accounts.map((key) => ({
+      pubkey: new PublicKey(key.pubkey),
+      isSigner: key.isSigner,
+      isWritable: key.isWritable,
+    })),
+    data: Buffer.from(instruction.data, "base64"),
+  });
+};
+
+const getAddressLookupTableAccounts = async (
+  keys: string[]
+): Promise<AddressLookupTableAccount[]> => {
+  const addressLookupTableAccountInfos =
+    await connection.getMultipleAccountsInfo(
+      keys.map((key) => new PublicKey(key))
+    );
+
+  return addressLookupTableAccountInfos.reduce((acc, accountInfo, index) => {
+    const addressLookupTableAddress = keys[index];
+    if (accountInfo) {
+      const addressLookupTableAccount = new AddressLookupTableAccount({
+        key: new PublicKey(addressLookupTableAddress),
+        state: AddressLookupTableAccount.deserialize(accountInfo.data),
+      });
+      acc.push(addressLookupTableAccount);
+    }
+
+    return acc;
+  }, new Array<AddressLookupTableAccount>());
+};
 
 async function executeTokenPurchase(tokenCA: string, amountInSOL: number) {
   if (!connection || !buyer) {
@@ -179,62 +227,147 @@ async function executeTokenPurchase(tokenCA: string, amountInSOL: number) {
     console.log(`✅ Quote received: ${quote.outAmount} output tokens`);
 
     // Build swap transaction
-    const swapTransaction = await buildJupiterSwapTransaction(
+    const instructions = await buildJupiterSwapInstruction(
       quote,
       buyer.publicKey.toBase58()
     );
 
-    // Send transaction using QuickNode RPC
-    console.log("📡 Sending transaction...");
+    const {
+      tokenLedgerInstruction, // If you are using `useTokenLedger = true`.
+      computeBudgetInstructions, // The necessary instructions to setup the compute budget.
+      setupInstructions, // Setup missing ATA for the users.
+      swapInstruction: swapInstructionPayload, // The actual swap instruction.
+      cleanupInstruction: cleanupInstructionPayload, // Unwrap the SOL if `wrapAndUnwrapSol = true`.
+      addressLookupTableAddresses, // The lookup table addresses that you can use if you are using versioned transaction.
+    } = instructions;
 
-    // Try to deserialize as versioned transaction first, then legacy
-    let tx;
-    let isVersioned = false;
-    try {
-      tx = VersionedTransaction.deserialize(
-        Buffer.from(swapTransaction, "base64")
-      );
-      console.log("✅ Using versioned transaction");
-      isVersioned = true;
-    } catch (versionedError) {
-      console.log("📝 Falling back to legacy transaction");
-      tx = Transaction.from(Buffer.from(swapTransaction, "base64"));
-    }
+    const swapInstructions: TransactionInstruction[] = [
+      ...computeBudgetInstructions.map(deserializeInstruction),
+      ...setupInstructions.map(deserializeInstruction),
+      deserializeInstruction(swapInstructionPayload),
+      deserializeInstruction(cleanupInstructionPayload),
+    ];
 
-    // Sign the transaction
-    if (isVersioned) {
-      (tx as VersionedTransaction).sign([buyer]);
-    } else {
-      (tx as Transaction).sign(buyer);
-    }
+    // console.log("📝 Swap transaction built successfully", swapInstructions);
 
-    const txid = await sendAndConfirmRawTransaction(
-      connection,
-      Buffer.from(
-        isVersioned
-          ? (tx as VersionedTransaction).serialize()
-          : (tx as Transaction).serialize()
-      )
+    const addressLookupTableAccounts: AddressLookupTableAccount[] = [];
+
+    addressLookupTableAccounts.push(
+      ...(await getAddressLookupTableAccounts(addressLookupTableAddresses))
     );
 
-    console.log("🎉 Token purchase executed successfully!");
-    console.log("📋 Transaction ID:", txid);
-    return true;
+    // Send via Astralane
+    const astralaneResponse = await sendTxTipped(
+      swapInstructions,
+      buyer,
+      connection,
+      ASTRALANE_URL,
+      ASTRALANE_API_KEY,
+      addressLookupTableAccounts
+    );
+
+    if (astralaneResponse.result) {
+      console.log("🎉 Token purchase executed successfully via Astralane!");
+      console.log("📋 Transaction ID:", astralaneResponse.result);
+
+      const result: any = {
+        tokenCA: tokenCA,
+        amountInSOL: amountInSOL,
+        timestamp: new Date().toISOString(),
+        buyTxId: astralaneResponse.result,
+      };
+
+      return true;
+    } else {
+      console.error(
+        "❌ Astralane transaction failed:",
+        astralaneResponse.error
+      );
+      return false;
+    }
   } catch (error) {
     console.error("❌ Error during token purchase:", error);
     return false;
   }
 }
 
-// Parse monitoring configuration from environment variables
+// Astralane transaction sending function for fast confirmation
+async function sendTxTipped(
+  ixs: TransactionInstruction[],
+  signer: Keypair,
+  rpcClient: Connection,
+  astralaneUrl: string,
+  apiKey: string,
+  addressLookupTableAccounts: AddressLookupTableAccount[]
+) {
+  // Add TIP instruction
+  const tipIx = SystemProgram.transfer({
+    fromPubkey: signer.publicKey,
+    toPubkey: TIP,
+    lamports: MIN_TIP_AMOUNT,
+  });
+
+  ixs.push(tipIx);
+
+  // Fetch recent blockhash
+  const blockhash = await rpcClient.getLatestBlockhash();
+
+  // Create transaction
+
+  const messageV0 = new TransactionMessage({
+    payerKey: signer.publicKey,
+    recentBlockhash: blockhash.blockhash,
+    instructions: ixs,
+  }).compileToV0Message(addressLookupTableAccounts);
+
+  const tx = new VersionedTransaction(messageV0);
+  tx.sign([signer]);
+
+  // console.log("Simulation: ", await rpcClient.simulateTransaction(tx));
+
+  // Serialize and encode transaction to base64
+  const serialized = tx.serialize();
+  const encodedTx = Buffer.from(serialized).toString("base64");
+
+  console.log(
+    "The length of the serialized transaction is:",
+    serialized.length
+  );
+
+  // Send transaction to Astralane endpoint
+  const response = await axios.post(
+    astralaneUrl,
+    {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "sendTransaction",
+      params: [
+        encodedTx,
+        {
+          encoding: "base64",
+          skipPreflight: true,
+        },
+        true, // MEV-protect enabled
+      ],
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        api_key: apiKey,
+      },
+    }
+  );
+
+  // console.log("🚀 Astralane Response:", response.data);
+  return response.data;
+}
+
+// Note: If MONITOR_KEYWORD is empty, the bot will buy tokens on ANY new tweet from that user
 function parseMonitoringConfig() {
   const config = [];
 
-  // Read configuration from environment variables
-  // Format: MONITOR_USER1=username1, MONITOR_KEYWORD1=keyword1, MONITOR_CA1=token_ca_address
-  //         MONITOR_USER2=username2, MONITOR_KEYWORD2=keyword2, MONITOR_CA2=token_ca_address, etc.
-
   let index = 1;
+  console.log("🔍 Parsing monitoring configuration...");
   while (true) {
     const userKey = `MONITOR_USER${index}`;
     const keywordKey = `MONITOR_KEYWORD${index}`;
@@ -244,9 +377,21 @@ function parseMonitoringConfig() {
     const keyword = process.env[keywordKey];
     const tokenCA = process.env[caKey];
 
-    if (!username || !keyword) {
-      break; // Stop when no more configuration found
+    if (!username) {
+      break;
     }
+
+    // Allow empty keywords (empty string is valid)
+    if (keyword === undefined) {
+      console.log(`  ⏹️  Stopping at index ${index} - keyword undefined`);
+      break;
+    }
+
+    console.log(
+      `  ✅ Found config ${index}: @${username} - keyword: "${keyword}" - CA: ${
+        tokenCA || "none"
+      }`
+    );
 
     config.push({
       username: username.trim(),
@@ -257,6 +402,7 @@ function parseMonitoringConfig() {
     index++;
   }
 
+  console.log(`📊 Total configurations found: ${config.length}`);
   return config;
 }
 
@@ -264,26 +410,26 @@ function parseMonitoringConfig() {
 const MONITORING_CONFIG = parseMonitoringConfig();
 
 // Fallback to single user if no multi-user config found
-if (MONITORING_CONFIG.length === 0) {
-  const username = process.env.USER_NAME;
-  const keyword = process.env.KEYWORD;
-  const tokenCA = process.env.TOKEN_CA;
+// if (MONITORING_CONFIG.length === 0) {
+//   const username = process.env.USER_NAME;
+//   const keyword = process.env.KEYWORD;
+//   const tokenCA = process.env.TOKEN_CA;
 
-  if (username && keyword) {
-    MONITORING_CONFIG.push({
-      username: username.trim(),
-      keyword: keyword.trim(),
-      tokenCA: tokenCA ? tokenCA.trim() : null,
-    });
-  }
-}
+//   if (username && keyword !== undefined) {
+//     MONITORING_CONFIG.push({
+//       username: username.trim(),
+//       keyword: keyword.trim(),
+//       tokenCA: tokenCA ? tokenCA.trim() : null,
+//     });
+//   }
+// }
 
 // Parse loop time from environment (in minutes)
 const LOOP_TIME_MINUTES = parseInt(process.env.LOOP_TIME) || 0; // 0 means no timeout
 const LOOP_TIME_MS = LOOP_TIME_MINUTES * 60 * 1000; // Convert to milliseconds
 
 // Cache file for storing username to userID mappings
-const CACHE_FILE = "user_cache.json";
+const CACHE_FILE = "user_id.json";
 
 // Global variables for real-time monitoring
 let lastProcessedTweetIds = {}; // Track last tweet ID for each user
@@ -388,10 +534,6 @@ function startMultiUserMonitoring() {
     console.log(
       "💡 Please set up your .env file with monitoring configuration:"
     );
-    console.log("   MONITOR_USER1=username1");
-    console.log("   MONITOR_KEYWORD1=keyword1");
-    console.log("   MONITOR_USER2=username2");
-    console.log("   MONITOR_KEYWORD2=keyword2");
     return;
   }
 
@@ -402,10 +544,10 @@ function startMultiUserMonitoring() {
 
   MONITORING_CONFIG.forEach((config, index) => {
     const caInfo = config.tokenCA ? ` - CA: ${config.tokenCA}` : "";
+    const keywordInfo =
+      config.keyword.trim() === "" ? "(any tweet)" : `"${config.keyword}"`;
     console.log(
-      `  ${index + 1}. @${config.username} - keyword: "${
-        config.keyword
-      }"${caInfo}`
+      `  ${index + 1}. @${config.username} - keyword: ${keywordInfo}${caInfo}`
     );
     // Add to active pairs
     const pairKey = `${config.username}-${config.keyword}`;
@@ -441,8 +583,10 @@ function initializeAllUsers() {
 
   MONITORING_CONFIG.forEach((config) => {
     const caInfo = config.tokenCA ? ` and CA "${config.tokenCA}"` : "";
+    const keywordInfo =
+      config.keyword.trim() === "" ? "(any tweet)" : `"${config.keyword}"`;
     console.log(
-      `\n🎯 Initializing @${config.username} with keyword "${config.keyword}"${caInfo}`
+      `\n🎯 Initializing @${config.username} with keyword ${keywordInfo}${caInfo}`
     );
 
     // Get user ID and set baseline
@@ -557,58 +701,6 @@ function startCyclingMonitoring() {
   }, 500); // 0.5 seconds between each user
 }
 
-// Set initial baseline
-function setInitialBaseline(userId, config) {
-  const options = {
-    method: "GET",
-    hostname: RAPID_HOST_NAME,
-    path: `/user-tweets?user=${userId}&count=1`,
-    headers: {
-      "x-rapidapi-key": RAPID_API_KEY,
-      "x-rapidapi-host": RAPID_HOST_NAME,
-    },
-  };
-
-  const req = https.request(options, (res) => {
-    let data = "";
-    res.on("data", (chunk) => (data += chunk));
-    res.on("end", () => {
-      try {
-        const json = JSON.parse(data);
-
-        if (json.message) {
-          console.log(`❌ API Error for @${config.username}: ${json.message}`);
-          return;
-        }
-
-        const entries = json.result?.timeline?.instructions?.[2]?.entries || [];
-        const tweets = entries
-          .map(
-            (entry) => entry.content?.itemContent?.tweet_results?.result?.legacy
-          )
-          .filter(Boolean);
-
-        if (tweets.length > 0) {
-          const latestTweetId = tweets[0].id_str || tweets[0].id;
-          lastProcessedTweetIds[config.username] = latestTweetId;
-          console.log(
-            `📊 Baseline set for @${config.username}: Latest tweet ID = ${latestTweetId}`
-          );
-          console.log(`⏳ Waiting for new tweets from @${config.username}...`);
-
-          // User is now ready for cycling monitoring
-          console.log(`⏳ @${config.username} ready for cycling monitoring...`);
-        }
-      } catch (err) {
-        console.error(`Error setting baseline for @${config.username}:`, err);
-      }
-    });
-  });
-
-  req.on("error", (err) => console.error("Request error:", err));
-  req.end();
-}
-
 // Stop monitoring for a specific user-keyword pair
 function stopMonitoringPair(config) {
   const pairKey = `${config.username}-${config.keyword}`;
@@ -700,13 +792,20 @@ async function checkForNewTweets(userId, config) {
 
             // Check if this new tweet matches our criteria
             const text = currentTweet.full_text || currentTweet.text || "";
-            const hasKeyword = text
-              .toLowerCase()
-              .includes(config.keyword.toLowerCase());
+
+            // If keyword is empty, any tweet should trigger purchase
+            // If keyword is not empty, check if tweet contains the keyword
+            const hasKeyword =
+              config.keyword.trim() === "" ||
+              text.toLowerCase().includes(config.keyword.toLowerCase());
 
             if (hasKeyword) {
+              const matchReason =
+                config.keyword.trim() === ""
+                  ? "any tweet (no keyword filter)"
+                  : `contains keyword "${config.keyword}"`;
               console.log(
-                `🎯 MATCH FOUND! Tweet from @${config.username} contains keyword "${config.keyword}"!`
+                `🎯 MATCH FOUND! Tweet from @${config.username} ${matchReason}!`
               );
 
               const result: any = {
@@ -781,13 +880,17 @@ async function checkForNewTweets(userId, config) {
               }
 
               // Stop monitoring only this specific pair
+              const stopReason =
+                config.keyword.trim() === ""
+                  ? "any tweet detected"
+                  : `keyword "${config.keyword}" found`;
               console.log(
-                `\n✅ Target found for @${config.username} with keyword "${config.keyword}"! Stopping this pair only.`
+                `\n✅ Target found for @${config.username} (${stopReason})! Stopping this pair only.`
               );
               stopMonitoringPair(config);
             } else {
               console.log(
-                `❌ Tweet from @${config.username} doesn't match criteria (keyword: ${hasKeyword})`
+                `❌ Tweet from @${config.username} doesn't match criteria (keyword filter: "${config.keyword}")`
               );
             }
           } else {
@@ -830,7 +933,7 @@ function stopRealTimeMonitoring() {
 function saveResultToFile(result) {
   try {
     let results = [];
-    const resultsFile = "real_time_results.json";
+    const resultsFile = "detect_tweet_results.json";
 
     // Load existing results
     if (fs.existsSync(resultsFile)) {
@@ -857,4 +960,3 @@ process.on("SIGINT", () => {
   stopRealTimeMonitoring();
   process.exit(0);
 });
-
