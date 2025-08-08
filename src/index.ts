@@ -54,7 +54,7 @@ if (QUICKNODE_RPC && WALLET_PRIVATE_KEY) {
 // Jupiter API configuration
 const JUPITER_API_BASE = process.env.JUPITER_API_BASE;
 const inputMint = "So11111111111111111111111111111111111111112"; // wSOL
-const slippageBps = 100; // 1%
+const slippageBps = process.env.SLIPPAGE_TOLERANCE; // 1%
 
 // Astralane configuration for fast transaction confirmation
 const ASTRALANE_URL = process.env.ASTRALANE_URL;
@@ -76,7 +76,7 @@ async function getJupiterQuote(
   inputMint: string,
   outputMint: string,
   amount: string,
-  slippageBps: number
+  slippageBps: string
 ) {
   console.log("🔄 Getting Jupiter quote...");
   console.log(
@@ -270,13 +270,6 @@ async function executeTokenPurchase(tokenCA: string, amountInSOL: number) {
       console.log("🎉 Token purchase executed successfully via Astralane!");
       console.log("📋 Transaction ID:", astralaneResponse.result);
 
-      const result: any = {
-        tokenCA: tokenCA,
-        amountInSOL: amountInSOL,
-        timestamp: new Date().toISOString(),
-        buyTxId: astralaneResponse.result,
-      };
-
       return true;
     } else {
       console.error(
@@ -372,10 +365,12 @@ function parseMonitoringConfig() {
     const userKey = `MONITOR_USER${index}`;
     const keywordKey = `MONITOR_KEYWORD${index}`;
     const caKey = `MONITOR_CA${index}`;
+    const buyAmountKey = `MONITOR_BUY_AMOUNT${index}`;
 
     const username = process.env[userKey];
     const keyword = process.env[keywordKey];
     const tokenCA = process.env[caKey];
+    const buyAmount = process.env[buyAmountKey];
 
     if (!username) {
       break;
@@ -387,16 +382,34 @@ function parseMonitoringConfig() {
       break;
     }
 
+    // Parse buy amount with fallback to default
+    let parsedBuyAmount = 0.0001; // Default fallback
+    if (buyAmount) {
+      const parsed = parseFloat(buyAmount);
+      if (!isNaN(parsed) && parsed > 0) {
+        parsedBuyAmount = parsed;
+      } else {
+        console.log(
+          `  ⚠️  Invalid buy amount for config ${index}: "${buyAmount}", using default: ${parsedBuyAmount} SOL`
+        );
+      }
+    } else {
+      console.log(
+        `  ℹ️  No buy amount specified for config ${index}, using default: ${parsedBuyAmount} SOL`
+      );
+    }
+
     console.log(
       `  ✅ Found config ${index}: @${username} - keyword: "${keyword}" - CA: ${
         tokenCA || "none"
-      }`
+      } - Buy Amount: ${parsedBuyAmount} SOL`
     );
 
     config.push({
       username: username.trim(),
       keyword: keyword.trim(),
       tokenCA: tokenCA ? tokenCA.trim() : null,
+      buyAmount: parsedBuyAmount,
     });
 
     index++;
@@ -547,7 +560,11 @@ function startMultiUserMonitoring() {
     const keywordInfo =
       config.keyword.trim() === "" ? "(any tweet)" : `"${config.keyword}"`;
     console.log(
-      `  ${index + 1}. @${config.username} - keyword: ${keywordInfo}${caInfo}`
+      `  ${index + 1}. @${
+        config.username
+      } - keyword: ${keywordInfo}${caInfo} - Buy Amount: ${
+        config.buyAmount
+      } SOL`
     );
     // Add to active pairs
     const pairKey = `${config.username}-${config.keyword}`;
@@ -586,7 +603,7 @@ function initializeAllUsers() {
     const keywordInfo =
       config.keyword.trim() === "" ? "(any tweet)" : `"${config.keyword}"`;
     console.log(
-      `\n🎯 Initializing @${config.username} with keyword ${keywordInfo}${caInfo}`
+      `\n🎯 Initializing @${config.username} with keyword ${keywordInfo}${caInfo} - Buy Amount: ${config.buyAmount} SOL`
     );
 
     // Get user ID and set baseline
@@ -839,16 +856,17 @@ async function checkForNewTweets(userId, config) {
                 console.log(`\n💰 EXECUTING TOKEN PURCHASE!`);
                 console.log(`  Token CA: ${result.tokenCA}`);
 
-                // Get buy amount from environment or use default
-                let buyAmount = parseFloat(process.env.BUY_AMOUNT || "0.0001");
+                // Get buy amount from the config that matched this detection
+                const matchedConfig = MONITORING_CONFIG.find(
+                  (config) =>
+                    config.username === result.username &&
+                    config.keyword === result.keyword
+                );
 
-                // Validate buy amount
-                if (isNaN(buyAmount) || buyAmount <= 0) {
-                  console.error(
-                    "❌ Invalid BUY_AMOUNT in environment variables. Using default: 0.0001 SOL"
-                  );
-                  buyAmount = 0.0001;
-                }
+                let buyAmount = matchedConfig
+                  ? matchedConfig.buyAmount
+                  : 0.0001;
+                console.log(`  Buy Amount: ${buyAmount} SOL (from config)`);
 
                 const purchaseSuccess = await executeTokenPurchase(
                   result.tokenCA,
