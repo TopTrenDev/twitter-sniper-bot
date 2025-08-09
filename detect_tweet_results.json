@@ -83,5 +83,93 @@
     "purchaseAmount": 0.0002,
     "purchaseTimestamp": "2025-08-08T22:55:21.220Z",
     "buyTxId": "2JhQa8kHPYuo83okAo3d4Lcikw91QK8FpFcagFtHBxMT8LAUWPDh378vv2tpuG514GUjzqQXoqSic4ujqwwv3y6h"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "solana foundation",
+    "tweetId": "1953969666440712522",
+    "timestamp": "2025-08-09T00:00:47.301Z",
+    "detectedAt": "2025-08-09T00:00:47.303Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "solana foundation",
+    "tweetId": "1953969666440712522",
+    "timestamp": "2025-08-09T00:00:47.301Z",
+    "detectedAt": "2025-08-09T00:00:47.303Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0002,
+    "purchaseTimestamp": "2025-08-09T00:00:53.747Z",
+    "buyTxId": "4PfgsJt3RyvbLZrFhowKGqeWu3onEfvn9WyutQuDDMywtcLSdYNmyHCeGiQaVYA8zxRzAfDhbd2RTidJVfEQErJu"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "solana?",
+    "tweetId": "1953970482933268669",
+    "timestamp": "2025-08-09T00:04:01.765Z",
+    "detectedAt": "2025-08-09T00:04:01.766Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "solana?",
+    "tweetId": "1953970482933268669",
+    "timestamp": "2025-08-09T00:04:01.765Z",
+    "detectedAt": "2025-08-09T00:04:01.766Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0002,
+    "purchaseTimestamp": "2025-08-09T00:04:06.951Z",
+    "buyTxId": "36QtPmci1Fk7Sk1hoXA4CkkhexDFTZ93S1i7Z8BbzGdP1WGx2EmS7HDrpDC4bauARj1Dd5KoJznWL552ZkfWg4Ad"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "crypto solana",
+    "tweetId": "1953972204682850638",
+    "timestamp": "2025-08-09T00:10:53.200Z",
+    "detectedAt": "2025-08-09T00:10:53.201Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "crypto solana",
+    "tweetId": "1953972204682850638",
+    "timestamp": "2025-08-09T00:10:53.200Z",
+    "detectedAt": "2025-08-09T00:10:53.201Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0002,
+    "purchaseTimestamp": "2025-08-09T00:10:58.484Z",
+    "buyTxId": "3WQBTnyzMkDxz6XXbuzzbJapgFR1ZHEGy1xP2pVUu5jHbRXtQDPmAXLDy8XA1x4caP4s38jgBCwmaoebFCXag4kw"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "solana blockchain",
+    "tweetId": "1954179287839367506",
+    "timestamp": "2025-08-09T13:53:45.462Z",
+    "detectedAt": "2025-08-09T13:53:45.463Z"
+  },
+  {
+    "username": "crypto_pawsol",
+    "keyword": "solana",
+    "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "tweetText": "solana blockchain",
+    "tweetId": "1954179287839367506",
+    "timestamp": "2025-08-09T13:53:45.462Z",
+    "detectedAt": "2025-08-09T13:53:45.463Z",
+    "purchaseExecuted": true,
+    "purchaseAmount": 0.0002,
+    "purchaseTimestamp": "2025-08-09T13:53:50.996Z",
+    "buyTxId": "5EpdqkZ7FNNpTGwLaZKm9frRuu7QRhqmeWEAvXaMgz3NpUu8XqPrKZmyF5JVhcNNYut6GeeWUA7wjWrXS3ZY6SDS"
   }
 ]
