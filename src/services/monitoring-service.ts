@@ -1,8 +1,13 @@
+import Pushover from "pushover-notifications";
 import { MonitoringConfig, UserConfigWithId, TweetResult } from "../types";
 import { TwitterAPI } from "./twitter-api";
 import { FileManager } from "./file-manager";
 import { SolanaService } from "./solana-service";
-import { LOOP_TIME_MS } from "../config/environment";
+import {
+  LOOP_TIME_MS,
+  PUSHOVER_API_TOKEN,
+  PUSHOVER_USER_KEY,
+} from "../config/environment";
 
 export class MonitoringService {
   private lastProcessedTweetIds: { [username: string]: string } = {};
@@ -284,11 +289,7 @@ export class MonitoringService {
       if (currentConfig) {
         const baseline =
           this.lastProcessedTweetIds[currentConfig.username] || "Empty";
-        console.log(
-          `\n🔄 [Cycle ${Math.floor(Date.now() / 500) + 1}] Checking @${
-            currentConfig.username
-          }`
-        );
+        console.log(`\n🔄 Cycle Checking @${currentConfig.username}`);
         // console.log(`   📊 Current baseline: ${baseline}`);
         // console.log(`   🔍 Keyword: "${currentConfig.keyword}"`);
         // console.log(`   💰 Buy Amount: ${currentConfig.buyAmount} SOL`);
@@ -296,7 +297,7 @@ export class MonitoringService {
         // Add a small delay to avoid rate limiting
         setTimeout(() => {
           this.checkForNewTweets(currentConfig);
-        }, 1000); // 1 second between each user to reduce rate limiting
+        }, 200); // 0.2 second between each user to reduce rate limiting
       }
 
       // Move to next user
@@ -316,7 +317,7 @@ export class MonitoringService {
           // console.log(`  @${config.username}: ${baseline}`);
         });
       }
-    }, 1000); // 1 second between each user to reduce rate limiting
+    }, 200); // 1 second between each user to reduce rate limiting
   }
 
   private async checkForNewTweets(config: UserConfigWithId): Promise<void> {
@@ -473,6 +474,17 @@ export class MonitoringService {
               result.purchaseTimestamp = new Date().toISOString();
               result.buyTxId = purchaseResult.buyTxId;
 
+              await this.sendNotification(
+                "🚀 Buy Tx Succeed!",
+                `
+    Username: @${result.username}
+    Keyword: ${result.keyword ? result.keyword : "No keyword"}
+    Token CA: ${result.tokenCA}
+    Buy Amount: ${result.purchaseAmount} SOL
+    Tx Signature: https://solscan.io/tx/${result.buyTxId}
+                `
+              );
+
               // Save updated result to detection file
               FileManager.saveResultToFile(result);
 
@@ -553,6 +565,27 @@ export class MonitoringService {
       process.exit(0);
     } else {
       console.log(`📊 ${this.activePairs.size} pair(s) still monitoring...`);
+    }
+  }
+
+  private async sendNotification(title: string, message: string) {
+    const response = await fetch("https://api.pushover.net/1/messages.json", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        token: PUSHOVER_API_TOKEN,
+        user: PUSHOVER_USER_KEY,
+        title: title,
+        message: message,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("Pushover send failed:", await response.text());
+    } else {
+      console.log("Notification sent!");
     }
   }
 

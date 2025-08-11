@@ -16,13 +16,17 @@ export const SLIPPAGE_BPS = process.env.SLIPPAGE_TOLERANCE || "100";
 export const ASTRALANE_URL = process.env.ASTRALANE_URL;
 export const ASTRALANE_API_KEY = process.env.ASTRALANE_API_KEY;
 
+// Pushover notifications
+export const PUSHOVER_USER_KEY = process.env.PUSHOVER_USER_KEY;
+export const PUSHOVER_API_TOKEN = process.env.PUSHOVER_API_TOKEN;
+
 // Monitoring configuration
 export const LOOP_TIME_MINUTES = parseInt(process.env.LOOP_TIME || "0");
 export const LOOP_TIME_MS = LOOP_TIME_MINUTES * 60 * 1000;
 
 // Constants
 export const INPUT_MINT = "So11111111111111111111111111111111111111112"; // wSOL
-export const MIN_TIP_AMOUNT = 100_000; // lamports
+export const MIN_TIP_AMOUNT = 10_000; // lamports
 export const DEFAULT_BUY_AMOUNT = 0.0001; // SOL
 
 // File paths
