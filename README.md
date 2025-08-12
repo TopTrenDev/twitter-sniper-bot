@@ -102,5 +102,5 @@ Transaction: https://solscan.io/tx/xxxxxxxx
 </p>
 
 <p align="center">
-💬 **Open for collaborations, discussions, and cool blockchain ideas!**
+  💬 Open for collaborations, discussions, and cool blockchain ideas! 
 </p>
