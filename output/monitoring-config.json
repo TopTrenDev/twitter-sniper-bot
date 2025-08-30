@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2025-08-21T01:11:22.751Z",
+  "totalUsers": 2,
+  "configuration": [
+    {
+      "username": "elonmusk",
+      "keywords": [
+        {
+          "keyword": "coin",
+          "tokens": [
+            {
+              "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "buyAmount": 0.0002,
+              "count": 1
+            }
+          ]
+        },
+        {
+          "keyword": "solana",
+          "tokens": [
+            {
+              "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "buyAmount": 0.0001,
+              "count": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "username": "vitalikbuterin",
+      "keywords": [
+        {
+          "keyword": "launch",
+          "tokens": [
+            {
+              "tokenCA": null,
+              "buyAmount": 0.0005,
+              "count": 1
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "totalUsers": 2,
+    "totalKeywords": 3,
+    "totalTokenConfigs": 3,
+    "totalPotentialBuyAmount": 0.0008,
+    "users": [
+      {
+        "username": "elonmusk",
+        "keywords": 2,
+        "tokens": 2,
+        "totalBuyAmount": 0.00030000000000000003
+      },
+      {
+        "username": "vitalikbuterin",
+        "keywords": 1,
+        "tokens": 1,
+        "totalBuyAmount": 0.0005
+      }
+    ]
+  }
+}

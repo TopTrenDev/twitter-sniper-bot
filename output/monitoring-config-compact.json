@@ -1,0 +1,42 @@
+[
+  {
+    "u": "elonmusk",
+    "k": [
+      {
+        "kw": "coin",
+        "t": [
+          {
+            "ca": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "amt": 0.0002,
+            "cnt": 1
+          }
+        ]
+      },
+      {
+        "kw": "solana",
+        "t": [
+          {
+            "ca": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "amt": 0.0001,
+            "cnt": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "u": "vitalikbuterin",
+    "k": [
+      {
+        "kw": "launch",
+        "t": [
+          {
+            "ca": null,
+            "amt": 0.0005,
+            "cnt": 1
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,20 @@
+node_modules/
+.env
+
+# User configuration files
+monitoring-config.xlsx
+
+# Log and cache files
+*.log
+user_id.json
+detect_tweet_results.json
+buy_transactions.json
+
+# Build output
+dist/
+
+# Keep important files
+!package.json
+!package-lock.json
+!tsconfig.json
+!monitoring-config-template.xlsx
